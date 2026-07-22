@@ -1,0 +1,17 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# graphify — track the graph outputs, ignore the machinery
+graphify-out/cache/
+graphify-out/.graphify_*
+graphify-out/cost.json
+graphify-out/manifest.json
+
+# reference clone (built locally for benchmarks, not vendored wholesale)
+/reference/
+
+# OS / editor
+.DS_Store
+*.swp
