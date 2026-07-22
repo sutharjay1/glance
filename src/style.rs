@@ -33,6 +33,8 @@ pub struct Style {
     pub italic: bool,
     pub strike: bool,
     pub code: bool,
+    /// Reverse-video highlight (search matches). Depth-independent, so it shows at any color.
+    pub highlight: bool,
     pub role: Role,
 }
 

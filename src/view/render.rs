@@ -8,15 +8,17 @@
 
 use crate::md::layout::DocLayout;
 use crate::paint::paint;
+use crate::style::{Line, Span};
 use crate::term::ansi;
 use crate::term::caps::ColorDepth;
 use crate::theme::Theme;
+use crate::view::search::Search;
 
 /// The painted content of each visible row (no cursor moves baked in).
 pub type Frame = Vec<String>;
 
 /// Build a `height`-row frame showing `doc` scrolled to `top`. Rows past the end of the document
-/// are blank.
+/// are blank. When `search` is present, matches on visible lines are highlighted.
 pub fn build_frame(
     doc: &DocLayout,
     top: usize,
@@ -24,13 +26,73 @@ pub fn build_frame(
     theme: &Theme,
     depth: ColorDepth,
     hyperlinks: bool,
+    search: Option<&Search>,
 ) -> Frame {
     (0..height)
-        .map(|row| match doc.lines.get(top + row) {
-            Some(line) => paint(line, theme, depth, hyperlinks),
-            None => String::new(),
+        .map(|row| {
+            let idx = top + row;
+            let Some(line) = doc.lines.get(idx) else {
+                return String::new();
+            };
+            match search {
+                Some(s) => {
+                    let ranges: Vec<(usize, usize)> =
+                        s.on_line(idx).map(|m| (m.start, m.end)).collect();
+                    if ranges.is_empty() {
+                        paint(line, theme, depth, hyperlinks)
+                    } else {
+                        paint(&highlight_line(line, &ranges), theme, depth, hyperlinks)
+                    }
+                }
+                None => paint(line, theme, depth, hyperlinks),
+            }
         })
         .collect()
+}
+
+/// Return a copy of `line` with the byte ranges (in its plain text) marked as search highlights.
+/// Spans are split at range boundaries; the matched segments get `style.highlight = true`.
+pub fn highlight_line(line: &Line, ranges: &[(usize, usize)]) -> Line {
+    if ranges.is_empty() {
+        return line.clone();
+    }
+    let mut out = Vec::new();
+    let mut pos = 0usize;
+    for span in &line.spans {
+        let start = pos;
+        let end = pos + span.text.len();
+        pos = end;
+        let text = span.text.as_str();
+        let mut cuts = vec![0usize, text.len()];
+        for &(rs, re) in ranges {
+            if re <= start || rs >= end {
+                continue;
+            }
+            cuts.push(rs.saturating_sub(start).min(text.len()));
+            cuts.push(re.saturating_sub(start).min(text.len()));
+        }
+        cuts.sort_unstable();
+        cuts.dedup();
+        for w in cuts.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            if a == b {
+                continue;
+            }
+            let mid = start + a;
+            let hl = ranges.iter().any(|&(rs, re)| rs <= mid && mid < re);
+            let mut style = span.style;
+            style.highlight = hl;
+            out.push(Span {
+                text: text[a..b].to_string(),
+                style,
+                href: span.href.clone(),
+            });
+        }
+    }
+    Line {
+        spans: out,
+        no_wrap: line.no_wrap,
+    }
 }
 
 /// Emit the terminal writes to turn `prev` into `next`, rewriting only changed rows. Pass
@@ -68,7 +130,7 @@ mod tests {
     #[test]
     fn build_frame_slices_and_pads() {
         let d = doc("# A\n\nb\n\nc", 80);
-        let f = build_frame(&d, 0, 10, &theme::dark(), ColorDepth::None, true);
+        let f = build_frame(&d, 0, 10, &theme::dark(), ColorDepth::None, true, None);
         assert_eq!(f.len(), 10); // padded to height
         assert!(f[0].contains('A'));
         // rows past the document are blank
@@ -78,10 +140,74 @@ mod tests {
     #[test]
     fn build_frame_respects_top() {
         let d = doc("l0\n\nl1\n\nl2\n\nl3", 80);
-        let f = build_frame(&d, 2, 2, &theme::dark(), ColorDepth::None, true);
+        let f = build_frame(&d, 2, 2, &theme::dark(), ColorDepth::None, true, None);
         assert_eq!(f.len(), 2);
         // starts at line index 2 of the doc
         assert_eq!(f[0], d.text[2]);
+    }
+
+    #[test]
+    fn highlight_line_splits_and_marks() {
+        use crate::style::{Line, Span, Style};
+        let line = Line {
+            spans: vec![Span::new("hello world", Style::default())],
+            no_wrap: false,
+        };
+        // highlight "world" (bytes 6..11)
+        let hl = highlight_line(&line, &[(6, 11)]);
+        // → "hello " (plain) + "world" (highlight)
+        assert_eq!(hl.spans.len(), 2);
+        assert_eq!(hl.spans[0].text, "hello ");
+        assert!(!hl.spans[0].style.highlight);
+        assert_eq!(hl.spans[1].text, "world");
+        assert!(hl.spans[1].style.highlight);
+        // plain text is preserved
+        assert_eq!(hl.plain_text(), "hello world");
+    }
+
+    #[test]
+    fn highlight_across_span_boundary() {
+        use crate::style::{Line, Span, Style};
+        let line = Line {
+            spans: vec![
+                Span::new("foo", Style::default()),
+                Span::new("bar", Style::default()),
+            ],
+            no_wrap: false,
+        };
+        // bytes 2..5 of "foobar" = "oba" (last o of foo, "ba" of bar)
+        let hl = highlight_line(&line, &[(2, 5)]);
+        assert_eq!(hl.plain_text(), "foobar");
+        let highlighted: String = hl
+            .spans
+            .iter()
+            .filter(|s| s.style.highlight)
+            .map(|s| s.text.as_str())
+            .collect();
+        assert_eq!(highlighted, "oba");
+    }
+
+    #[test]
+    fn highlight_empty_ranges_is_clone() {
+        use crate::style::{Line, Span, Style};
+        let line = Line {
+            spans: vec![Span::new("x", Style::default())],
+            no_wrap: false,
+        };
+        assert_eq!(highlight_line(&line, &[]), line);
+    }
+
+    #[test]
+    fn build_frame_highlights_search_matches() {
+        use crate::view::search::Search;
+        let d = doc("find the target word here", 80);
+        let s = Search::new("target", &d.text);
+        let f = build_frame(&d, 0, 3, &theme::dark(), ColorDepth::TrueColor, false, Some(&s));
+        // the matched row carries a reverse-video SGR (7) from the highlight
+        assert!(f.iter().any(|row| row.contains("\x1b[7;")), "no reverse-video highlight in {f:?}");
+        // an unsearched render of the same doc has none
+        let plain = build_frame(&d, 0, 3, &theme::dark(), ColorDepth::TrueColor, false, None);
+        assert!(!plain.iter().any(|row| row.contains("\x1b[7;")));
     }
 
     #[test]

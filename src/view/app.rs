@@ -20,10 +20,16 @@ use crossterm::{execute, queue};
 
 use crate::md::parse::Block;
 use crate::term::caps::ColorDepth;
-use crate::term::input::{map_event, Event};
+use crate::term::input::{map_event, Event, Key};
 use crate::theme::Theme;
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
+
+/// Input mode of the viewer. `Search(query)` is the `/` prompt collecting a query.
+enum Mode {
+    Normal,
+    Search(String),
+}
 
 /// RAII terminal setup/teardown. Enter on construction, restore on drop.
 pub struct TerminalGuard;
@@ -83,34 +89,68 @@ pub fn run(
     let _guard = TerminalGuard::enter()?;
     let mut out = io::stdout();
     let mut prev: Option<Frame> = None;
+    let mut mode = Mode::Normal;
 
-    draw(&mut out, &state, &theme, depth, hyperlinks, &mut prev, true)?;
+    draw(
+        &mut out, &state, &theme, depth, hyperlinks, &mut prev, true, &mode,
+    )?;
 
     loop {
-        let ev = event::read()?;
-        let mut force_full = false;
-        let action = match map_event(ev) {
-            Some(Event::Key(k)) => state.on_key(k),
-            Some(Event::Mouse(m)) => state.on_mouse(m),
+        match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
                 state.on_resize(cols as usize, rows as usize);
-                force_full = true; // geometry changed → repaint everything
-                Action::Redraw
+                draw(
+                    &mut out, &state, &theme, depth, hyperlinks, &mut prev, true, &mode,
+                )?;
             }
-            None => Action::Ignore,
-        };
-        match action {
-            Action::Quit => break,
-            Action::Redraw => draw(
-                &mut out, &state, &theme, depth, hyperlinks, &mut prev, force_full,
-            )?,
-            Action::Ignore => {}
+            Some(Event::Mouse(m)) if matches!(mode, Mode::Normal) => {
+                if state.on_mouse(m) == Action::Redraw {
+                    draw(
+                        &mut out, &state, &theme, depth, hyperlinks, &mut prev, false, &mode,
+                    )?;
+                }
+            }
+            Some(Event::Key(k)) => {
+                let mut full = false;
+                // Take mode out so we can reassign it inside the match.
+                match std::mem::replace(&mut mode, Mode::Normal) {
+                    Mode::Normal => match k {
+                        Key::Char('/') => mode = Mode::Search(String::new()),
+                        other => match state.on_key(other) {
+                            Action::Quit => break,
+                            Action::Redraw => {}
+                            Action::Ignore => continue,
+                        },
+                    },
+                    Mode::Search(mut query) => match k {
+                        Key::Char(c) => {
+                            query.push(c);
+                            mode = Mode::Search(query);
+                        }
+                        Key::Backspace => {
+                            query.pop();
+                            mode = Mode::Search(query);
+                        }
+                        Key::Enter => {
+                            state.run_search(&query);
+                            full = true; // search may jump the viewport → full repaint
+                        }
+                        Key::Esc => full = true, // cancel input; mode already Normal
+                        _ => mode = Mode::Search(query),
+                    },
+                }
+                draw(
+                    &mut out, &state, &theme, depth, hyperlinks, &mut prev, full, &mode,
+                )?;
+            }
+            _ => {}
         }
     }
     Ok(())
 }
 
-/// Build the current frame and write the diff (or a full repaint) to the terminal.
+/// Build the current frame (with search highlighting + a status/prompt line) and write the diff.
+#[allow(clippy::too_many_arguments)] // a render step legitimately takes the full frame context
 fn draw(
     out: &mut io::Stdout,
     state: &ViewerState,
@@ -119,18 +159,41 @@ fn draw(
     hyperlinks: bool,
     prev: &mut Option<Frame>,
     force_full: bool,
+    mode: &Mode,
 ) -> io::Result<()> {
-    let frame = build_frame(
+    let mut frame = build_frame(
         &state.doc,
         state.top,
         state.height,
         theme,
         depth,
         hyperlinks,
+        state.search.as_ref(),
     );
+    // Overlay the search prompt / status on the bottom row when relevant.
+    if let Some(status) = status_line(state, mode) {
+        if let Some(last) = frame.last_mut() {
+            *last = status;
+        }
+    }
     let base = if force_full { None } else { prev.as_ref() };
     queue!(out, crossterm::style::Print(render(base, &frame)))?;
     out.flush()?;
     *prev = Some(frame);
     Ok(())
+}
+
+/// The bottom-row status line: the live `/` prompt while typing, or a `query  3/12` readout
+/// while a search is active.
+fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
+    match mode {
+        Mode::Search(query) => Some(format!("/{query}")),
+        Mode::Normal => state.search.as_ref().map(|s| {
+            if s.is_empty() {
+                format!("/{}  no matches", s.query)
+            } else {
+                format!("/{}  {}/{}", s.query, s.position(), s.len())
+            }
+        }),
+    }
 }

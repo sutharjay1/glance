@@ -102,6 +102,9 @@ fn sgr_params(span: &Span, theme: &Theme, depth: ColorDepth) -> String {
     if span.href.is_some() {
         parts.push("4".into()); // underline links
     }
+    if span.style.highlight {
+        parts.push("7".into()); // reverse video for search matches
+    }
     let fgp = ansi::fg(pick_color(span, theme), depth);
     if !fgp.is_empty() {
         parts.push(fgp);
