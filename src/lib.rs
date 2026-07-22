@@ -40,10 +40,10 @@ OPTIONS:
 
 /// Run glance with the given CLI args (excluding `argv[0]`). Returns a process exit code.
 ///
-/// Phase 1, in progress: `-V/-h` plus a provisional **pipe render** — a file argument is
-/// parsed → laid out → painted to stdout. When stdout is a TTY it uses detected color depth;
-/// piped/`--no-color` output is clean plain text. The interactive TUI (event loop, viewport,
-/// navigation) is a later module (JAY-91).
+/// Dispatch: `-V/-h` short-circuit; then a file argument is read and either shown in the
+/// **interactive TUI** (stdout is a TTY and not `--pipe`) or rendered once to stdout in **pipe
+/// mode** (piped/`--no-color`/`--pipe` → clean plain or styled text). Full CLI parsing,
+/// multi-file, `--export`, and the streaming stdin path are later modules.
 pub fn run(args: &[String]) -> i32 {
     if args.iter().any(|a| a == "-V" || a == "--version") {
         println!("glance {VERSION}");
@@ -55,6 +55,7 @@ pub fn run(args: &[String]) -> i32 {
     }
 
     let no_color = args.iter().any(|a| a == "--no-color");
+    let force_pipe = args.iter().any(|a| a == "--pipe");
     let theme_name = flag_value(args, "-T", "--theme").unwrap_or("dark");
     let theme = theme::by_name(theme_name);
 
@@ -72,18 +73,33 @@ pub fn run(args: &[String]) -> i32 {
     };
 
     let is_tty = std::io::stdout().is_terminal();
+
+    // Interactive TUI when we own a terminal and weren't asked to pipe.
+    if is_tty && !force_pipe {
+        let depth = if no_color {
+            ColorDepth::None
+        } else {
+            Capabilities::from_env(false).color
+        };
+        let blocks = md::parse::parse(&input).blocks;
+        return match view::app::run(blocks, theme, depth, true) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("glance: {e}");
+                1
+            }
+        };
+    }
+
+    // Pipe mode: render once to stdout. Plain when not a TTY or --no-color.
     let depth = if no_color || !is_tty {
         ColorDepth::None
     } else {
         Capabilities::from_env(false).color
     };
-    // OSC 8 only when interactive; piped output stays clean.
-    let hyperlinks = is_tty && !no_color;
-    let width = 80;
-
     print!(
         "{}",
-        paint::render_document(&input, width, &theme, depth, hyperlinks)
+        paint::render_document(&input, 80, &theme, depth, false)
     );
     0
 }
