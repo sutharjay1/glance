@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: md::parse (Block tree) · JAY-91
+**Phase:** 1 (🟨) · **Focus:** markdown pipeline · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `md::parse`: pulldown-cmark GFM → typed `Block`/`Inline` tree via a stack-based event folder. Includes ESC/C0 **sanitize** at the boundary (weakness #4 hardening), GitHub **callout** detection, task-list markers, ordered-list start, fenced-code lang.
+- TDD paid off — two real pulldown behaviors caught by failing tests: (1) tight-list items emit bare text with no `Paragraph` → added implicit-paragraph handling; (2) `[!NOTE]` tokenizes into 3 Text events (`[`,`!NOTE`,`]`) → marker reconstruction across the leading Text run.
+- Added `pulldown-cmark` 0.12. 12 tests incl. a real mdterm-fixture smoke test. **50 total green**, fmt + clippy clean. Tables parsed-but-skipped (dedicated follow-up with layout).
+
+**Next:** `md::layout` — Block × width → `Vec<Line>` with hanging indents, callout panels, layout cache `(block,width)`, viewport-first. The core of the perf architecture (ADR 0004).
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: term::input (crossterm mapping) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** terminal layer (done, testable parts) · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

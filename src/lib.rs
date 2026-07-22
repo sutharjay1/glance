@@ -5,6 +5,7 @@
 //! from the plan — the entry point holds no logic. See `ROADMAP.md` for the phase plan and
 //! `docs/adr/` for the decisions behind this structure.
 
+pub mod md;
 pub mod term;
 pub mod text;
 

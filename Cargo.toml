@@ -20,6 +20,7 @@ path = "src/lib.rs"
 unicode-width = "0.2"
 base64 = "0.22"          # OSC 52 clipboard payload encoding
 crossterm = "0.28"       # raw mode, key/mouse decode, Windows ConPTY (ADR 0003)
+pulldown-cmark = { version = "0.12", default-features = false }  # CommonMark + GFM parsing
 
 [dev-dependencies]
 # Phase 1+: insta (snapshots), expectrl (PTY)
