@@ -7,6 +7,7 @@
 
 pub mod cli;
 pub mod config;
+pub mod fuzzy;
 pub mod md;
 pub mod paint;
 pub mod style;

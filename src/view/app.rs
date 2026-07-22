@@ -23,15 +23,17 @@ use crate::paint::paint;
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key};
 use crate::theme::Theme;
-use crate::view::overlays::Toc;
+use crate::view::overlays::{Fuzzy, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
 
-/// Input mode of the viewer: the `/` search prompt, the `o` table-of-contents overlay, or normal.
+/// Input mode of the viewer: `/` search prompt, `o` TOC overlay, `:` fuzzy heading filter, or
+/// normal document navigation.
 enum Mode {
     Normal,
     Search(String),
     Toc(Toc),
+    Fuzzy(Fuzzy),
 }
 
 /// RAII terminal setup/teardown. Enter on construction, restore on drop.
@@ -126,6 +128,12 @@ pub fn run(
                                 full = true; // overlay replaces the screen
                             }
                         }
+                        Key::Char(':') => {
+                            if !state.doc.headings.is_empty() {
+                                mode = Mode::Fuzzy(Fuzzy::new(&state.doc.headings));
+                                full = true;
+                            }
+                        }
                         other => match state.on_key(other) {
                             Action::Quit => break,
                             Action::Redraw => {}
@@ -169,6 +177,35 @@ pub fn run(
                             _ => mode = Mode::Toc(toc),                      // stay open
                         }
                     }
+                    // Fuzzy filter: typed chars edit the query; arrows move the selection.
+                    Mode::Fuzzy(mut f) => {
+                        full = true;
+                        match k {
+                            Key::Char(c) => {
+                                f.push(c);
+                                mode = Mode::Fuzzy(f);
+                            }
+                            Key::Backspace => {
+                                f.pop();
+                                mode = Mode::Fuzzy(f);
+                            }
+                            Key::Down => {
+                                f.down();
+                                mode = Mode::Fuzzy(f);
+                            }
+                            Key::Up => {
+                                f.up();
+                                mode = Mode::Fuzzy(f);
+                            }
+                            Key::Enter => {
+                                if let Some(line) = f.selected_line() {
+                                    state.center_on(line);
+                                }
+                            }
+                            Key::Esc => {} // close
+                            _ => mode = Mode::Fuzzy(f),
+                        }
+                    }
                 }
                 draw(
                     &mut out, &state, &theme, depth, hyperlinks, &mut prev, full, &mode,
@@ -192,18 +229,22 @@ fn draw(
     force_full: bool,
     mode: &Mode,
 ) -> io::Result<()> {
-    let mut frame = match mode {
-        // The TOC overlay takes over the screen.
-        Mode::Toc(toc) => {
-            let mut f: Vec<String> = toc
-                .view(state.width, state.height)
+    let overlay = match mode {
+        Mode::Toc(toc) => Some(toc.view(state.width, state.height)),
+        Mode::Fuzzy(f) => Some(f.view(state.width, state.height)),
+        _ => None,
+    };
+    let mut frame = match overlay {
+        // A picker overlay takes over the screen.
+        Some(lines) => {
+            let mut f: Vec<String> = lines
                 .iter()
                 .map(|l| paint(l, theme, depth, hyperlinks))
                 .collect();
             f.resize(state.height, String::new());
             f
         }
-        _ => build_frame(
+        None => build_frame(
             &state.doc,
             state.top,
             state.height,
@@ -236,6 +277,16 @@ fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
             toc.selected_index() + 1,
             toc.len()
         )),
+        Mode::Fuzzy(f) => Some(if f.count() == 0 {
+            format!(":{}  no matches", f.query)
+        } else {
+            format!(
+                ":{}  {}/{}  · ↑↓ Enter Esc",
+                f.query,
+                f.selected_index() + 1,
+                f.count()
+            )
+        }),
         Mode::Normal => state.search.as_ref().map(|s| {
             if s.is_empty() {
                 format!("/{}  no matches", s.query)
