@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: code line numbers (l) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `md::layout`: threaded `line_numbers` through `layout_document`/`layout_blocks`/`layout_block` (+ list/callout/blockquote recursion). New `layout_code` renders a right-aligned `N │ ` gutter (dim), reserving its width so code truncates to fit. `gutter_width` = digits + `" │ "`.
+- `ViewerState`: `line_numbers` field + `toggle_line_numbers` (re-layout, anchor scroll); `l` in `on_key`. `new()` takes the flag; wired from `cli -l` / `config.line_numbers`. `render_document`+`app::run` take it; lib threads it.
+- Churn note: threaded the flag through ~15 call sites (bulk-fixed test callers with sed). 1 test (gutter on/off). **157 total green**, fmt + clippy clean (commit 5bb4c08). Reinstalled.
+
+**Next:** multi-file tabs (`Tab`/`Shift+Tab`, per-file scroll) — the last big Phase 2 item; then auto-reload, OSC 11 auto-theme, click-to-copy close it out.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: help overlay (h/?) + theme toggle (t) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
