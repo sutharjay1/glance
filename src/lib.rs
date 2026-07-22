@@ -70,6 +70,7 @@ pub fn run(args: &[String]) -> i32 {
     let theme_name = parsed.theme.as_deref().unwrap_or(&cfg.theme);
     let theme = theme::by_name(theme_name);
     let theme_dark = theme_name != "light";
+    let line_numbers = parsed.line_numbers || cfg.line_numbers;
     let no_color = parsed.no_color;
     let width_override = parsed.width.or((cfg.width > 0).then_some(cfg.width));
 
@@ -91,7 +92,7 @@ pub fn run(args: &[String]) -> i32 {
         let t0 = std::time::Instant::now();
         let blocks = md::parse::parse(&input).blocks;
         let t_parse = t0.elapsed();
-        let doc = md::layout::layout_document(&blocks, width_override.unwrap_or(80));
+        let doc = md::layout::layout_document(&blocks, width_override.unwrap_or(80), line_numbers);
         let t_total = t0.elapsed();
         eprintln!(
             "glance --timing: parse {:.2?}, parse+layout {:.2?} ({} lines, {} bytes)",
@@ -114,7 +115,15 @@ pub fn run(args: &[String]) -> i32 {
         };
         let blocks = md::parse::parse(&input).blocks;
         let file = Some(std::path::PathBuf::from(path));
-        return match view::app::run(blocks, theme_dark, depth, true, width_override, file) {
+        return match view::app::run(
+            blocks,
+            theme_dark,
+            depth,
+            true,
+            width_override,
+            file,
+            line_numbers,
+        ) {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("glance: {e}");
@@ -132,7 +141,7 @@ pub fn run(args: &[String]) -> i32 {
     let width = width_override.filter(|&w| w > 0).unwrap_or(80);
     print!(
         "{}",
-        paint::render_document(&input, width, &theme, depth, false)
+        paint::render_document(&input, width, &theme, depth, false, line_numbers)
     );
     0
 }

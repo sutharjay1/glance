@@ -43,11 +43,19 @@ pub struct ViewerState {
     history: Vec<(PathBuf, usize)>,
     /// A transient status message (e.g. "copied document"), shown until the next keypress.
     toast: Option<String>,
+    /// Whether code blocks show a line-number gutter (`l` toggles; `-l`/config seed it).
+    line_numbers: bool,
 }
 
 impl ViewerState {
-    pub fn new(blocks: Vec<Block>, width: usize, height: usize, path: Option<PathBuf>) -> Self {
-        let doc = layout_document(&blocks, width);
+    pub fn new(
+        blocks: Vec<Block>,
+        width: usize,
+        height: usize,
+        path: Option<PathBuf>,
+        line_numbers: bool,
+    ) -> Self {
+        let doc = layout_document(&blocks, width, line_numbers);
         ViewerState {
             blocks,
             doc,
@@ -58,7 +66,20 @@ impl ViewerState {
             path,
             history: Vec::new(),
             toast: None,
+            line_numbers,
         }
+    }
+
+    /// Toggle the code line-number gutter and re-lay-out (it changes code width).
+    pub fn toggle_line_numbers(&mut self) {
+        self.line_numbers = !self.line_numbers;
+        let top = self.top;
+        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
+        self.top = top.min(self.max_top());
+    }
+
+    pub fn line_numbers(&self) -> bool {
+        self.line_numbers
     }
 
     // --- Copy sources + toast ---------------------------------------------
@@ -114,7 +135,7 @@ impl ViewerState {
             self.history.push((cur, self.top));
         }
         self.blocks = parse(&input).blocks;
-        self.doc = layout_document(&self.blocks, self.width);
+        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
         self.top = 0;
         self.search = None;
         self.path = Some(path);
@@ -130,7 +151,7 @@ impl ViewerState {
             return false;
         };
         self.blocks = parse(&input).blocks;
-        self.doc = layout_document(&self.blocks, self.width);
+        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
         self.path = Some(path);
         self.search = None;
         self.top = top.min(self.max_top());
@@ -227,7 +248,7 @@ impl ViewerState {
         let anchor = self.top;
         self.width = width;
         self.height = height;
-        self.doc = layout_document(&self.blocks, width);
+        self.doc = layout_document(&self.blocks, width, self.line_numbers);
         self.top = anchor.min(self.max_top());
         if let Some(s) = &self.search {
             self.search = Some(Search::new(&s.query, &self.doc.text));
@@ -255,6 +276,7 @@ impl ViewerState {
             Key::Backspace if self.can_go_back() => {
                 self.back();
             }
+            Key::Char('l') => self.toggle_line_numbers(),
             Key::Char('q') | Key::Ctrl('c') => return Action::Quit,
             _ => return Action::Ignore,
         }
@@ -278,7 +300,7 @@ mod tests {
     use crate::md::parse::parse;
 
     fn state(md: &str, width: usize, height: usize) -> ViewerState {
-        ViewerState::new(parse(md).blocks, width, height, None)
+        ViewerState::new(parse(md).blocks, width, height, None, false)
     }
 
     /// A document with `n` short paragraphs → at least `n` lines.

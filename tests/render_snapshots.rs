@@ -12,7 +12,7 @@ use glance::theme;
 const FEATURES: &str = include_str!("fixtures/features.md");
 
 fn render(width: usize, depth: ColorDepth) -> String {
-    render_document(FEATURES, width, &theme::dark(), depth, false)
+    render_document(FEATURES, width, &theme::dark(), depth, false, false)
 }
 
 #[test]

@@ -124,7 +124,7 @@ mod tests {
     use crate::theme;
 
     fn doc(md: &str, w: usize) -> DocLayout {
-        layout_document(&parse(md).blocks, w)
+        layout_document(&parse(md).blocks, w, false)
     }
 
     #[test]

@@ -129,13 +129,14 @@ pub fn run(
     hyperlinks: bool,
     width_override: Option<usize>,
     path: Option<PathBuf>,
+    line_numbers: bool,
 ) -> io::Result<()> {
     install_panic_hook();
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let width = width_override
         .filter(|&w| w > 0)
         .map_or(cols as usize, |w| w.min(cols as usize));
-    let mut state = ViewerState::new(blocks, width, rows as usize, path);
+    let mut state = ViewerState::new(blocks, width, rows as usize, path, line_numbers);
     // Theme is toggled at runtime (`t`); it affects paint only, never layout.
     let mut dark = theme_dark;
     let mut theme = if dark { theme::dark() } else { theme::light() };

@@ -57,6 +57,7 @@ pub fn render_document(
     theme: &Theme,
     depth: ColorDepth,
     hyperlinks: bool,
+    line_numbers: bool,
 ) -> String {
     let doc = parse(input);
     // Without OSC 8, bake ` (url)` suffixes into the tree so they wrap as content.
@@ -66,7 +67,7 @@ pub fn render_document(
         crate::md::parse::with_url_suffixes(&doc.blocks)
     };
     let mut out = String::new();
-    for line in layout_blocks(&blocks, width) {
+    for line in layout_blocks(&blocks, width, line_numbers) {
         out.push_str(&paint(&line, theme, depth, hyperlinks));
         out.push('\n');
     }
@@ -186,7 +187,7 @@ mod tests {
         // Real pipeline: a two-word link must paint as ONE OSC 8 run (internal space included).
         use crate::md::layout::layout_blocks;
         use crate::md::parse::parse;
-        let lines = layout_blocks(&parse("see [the docs](https://x.io) now").blocks, 80);
+        let lines = layout_blocks(&parse("see [the docs](https://x.io) now").blocks, 80, false);
         let s = paint(&lines[0], &dark(), ColorDepth::TrueColor, true);
         assert_eq!(s.matches("\x1b]8;;https://x.io\x1b\\").count(), 1);
         assert_eq!(s.matches(osc::LINK_CLOSE).count(), 1);
@@ -219,6 +220,7 @@ mod tests {
             &dark(),
             ColorDepth::None,
             false,
+            false,
         );
         assert!(out.contains("(https://x.io)"));
         // ...and it does not appear when hyperlinks are on (OSC 8 carries it instead).
@@ -228,6 +230,7 @@ mod tests {
             &dark(),
             ColorDepth::TrueColor,
             true,
+            false,
         );
         assert!(!osc.contains("(https://x.io)"));
         assert!(osc.contains("\x1b]8;;https://x.io"));
@@ -258,6 +261,7 @@ mod tests {
             &dark(),
             ColorDepth::TrueColor,
             false,
+            false,
         );
         assert!(out.contains("203;166;247"), "keyword mauve missing"); // `let`
         assert!(out.contains("250;179;135"), "number peach missing"); // `42`
@@ -271,6 +275,7 @@ mod tests {
             &dark(),
             ColorDepth::None,
             true,
+            false,
         );
         assert!(out.contains("Title"));
         assert!(out.contains("some text"));

@@ -325,7 +325,7 @@ mod tests {
     use crate::md::parse::parse;
 
     fn toc(md: &str) -> Toc {
-        Toc::new(&layout_document(&parse(md).blocks, 80).headings)
+        Toc::new(&layout_document(&parse(md).blocks, 80, false).headings)
     }
 
     #[test]
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn selected_line_matches_heading() {
-        let doc = layout_document(&parse("# a\n\nbody\n\n## b").blocks, 80);
+        let doc = layout_document(&parse("# a\n\nbody\n\n## b").blocks, 80, false);
         let mut t = Toc::new(&doc.headings);
         assert_eq!(t.selected_line(), Some(doc.headings[0].line));
         t.down();
@@ -390,7 +390,7 @@ mod tests {
     }
 
     fn fz(md: &str) -> Fuzzy {
-        Fuzzy::new(&layout_document(&parse(md).blocks, 80).headings)
+        Fuzzy::new(&layout_document(&parse(md).blocks, 80, false).headings)
     }
 
     #[test]
@@ -440,6 +440,7 @@ mod tests {
         let doc = layout_document(
             &parse("see [docs](https://x.io) and [more](./b.md)").blocks,
             80,
+            false,
         );
         let mut l = Links::new(&doc.links);
         assert_eq!(l.len(), 2);

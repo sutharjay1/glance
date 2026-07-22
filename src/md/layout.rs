@@ -17,13 +17,13 @@ use crate::style::{Line, Role, Span, Style};
 use crate::text::width;
 
 /// Lay out a slice of blocks at content width `w`, separated by blank lines.
-pub fn layout_blocks(blocks: &[Block], w: usize) -> Vec<Line> {
+pub fn layout_blocks(blocks: &[Block], w: usize, line_numbers: bool) -> Vec<Line> {
     let mut out = Vec::new();
     for (i, b) in blocks.iter().enumerate() {
         if i > 0 {
             out.push(Line::default());
         }
-        out.extend(layout_block(b, w));
+        out.extend(layout_block(b, w, line_numbers));
     }
     out
 }
@@ -79,7 +79,7 @@ impl DocLayout {
 /// Lay out a whole document, recording indices alongside the lines. Top-level headings and code
 /// blocks are indexed with their line positions; links are collected from every line's spans (so
 /// nested links are found too).
-pub fn layout_document(blocks: &[Block], w: usize) -> DocLayout {
+pub fn layout_document(blocks: &[Block], w: usize, line_numbers: bool) -> DocLayout {
     let mut lines: Vec<Line> = Vec::new();
     let mut headings = Vec::new();
     let mut code_blocks = Vec::new();
@@ -88,7 +88,7 @@ pub fn layout_document(blocks: &[Block], w: usize) -> DocLayout {
             lines.push(Line::default());
         }
         let start = lines.len();
-        let bl = layout_block(b, w);
+        let bl = layout_block(b, w, line_numbers);
         match b {
             Block::Heading { level, inlines } => headings.push(Heading {
                 depth: *level,
@@ -159,8 +159,8 @@ fn collect_links(lines: &[Line]) -> Vec<LinkRef> {
     links
 }
 
-/// Lay out one block at content width `w`.
-pub fn layout_block(block: &Block, w: usize) -> Vec<Line> {
+/// Lay out one block at content width `w`. `line_numbers` adds a gutter to code blocks.
+pub fn layout_block(block: &Block, w: usize, line_numbers: bool) -> Vec<Line> {
     match block {
         Block::Heading { level: _, inlines } => {
             let style = Style {
@@ -172,26 +172,7 @@ pub fn layout_block(block: &Block, w: usize) -> Vec<Line> {
         }
         Block::Paragraph(inlines) => wrap_inlines(inlines, Style::default(), w, &empty(), &empty()),
         Block::Code { code, lang } => {
-            let lang = lang.as_deref().unwrap_or("");
-            if highlight::supported(lang) {
-                highlight::highlight(code, lang)
-                    .into_iter()
-                    .map(|spans| Line {
-                        spans: truncate_spans(spans, w),
-                        no_wrap: true,
-                    })
-                    .collect()
-            } else {
-                code.lines()
-                    .map(|l| Line {
-                        spans: vec![Span::new(
-                            truncate(l, w),
-                            Style::role(Role::Body).with_code(),
-                        )],
-                        no_wrap: true,
-                    })
-                    .collect()
-            }
+            layout_code(code, lang.as_deref().unwrap_or(""), w, line_numbers)
         }
         Block::ThematicBreak => vec![Line {
             spans: vec![Span::new("─".repeat(w.max(1)), Style::role(Role::Rule))],
@@ -201,17 +182,62 @@ pub fn layout_block(block: &Block, w: usize) -> Vec<Line> {
             ordered,
             start,
             items,
-        } => layout_list(*ordered, *start, items, w),
+        } => layout_list(*ordered, *start, items, w, line_numbers),
         Block::BlockQuote(blocks) => {
             let bar = Span::new("▏ ", Style::role(Role::Accent));
             prefixed(
-                layout_blocks(blocks, w.saturating_sub(width(&bar.text))),
+                layout_blocks(blocks, w.saturating_sub(width(&bar.text)), line_numbers),
                 &bar,
                 &bar,
             )
         }
-        Block::Callout { kind, blocks } => layout_callout(*kind, blocks, w),
+        Block::Callout { kind, blocks } => layout_callout(*kind, blocks, w, line_numbers),
     }
+}
+
+/// Lay out a code block: highlighted (or plain) lines, optionally with a right-aligned line-number
+/// gutter (`  1 │ `) whose width is reserved from the code area.
+fn layout_code(code: &str, lang: &str, w: usize, line_numbers: bool) -> Vec<Line> {
+    let rows: Vec<Vec<Span>> = if highlight::supported(lang) {
+        highlight::highlight(code, lang)
+    } else {
+        code.lines()
+            .map(|l| {
+                vec![Span::new(
+                    l.to_string(),
+                    Style::role(Role::Body).with_code(),
+                )]
+            })
+            .collect()
+    };
+    let gutter_w = if line_numbers {
+        gutter_width(rows.len())
+    } else {
+        0
+    };
+    let content_w = w.saturating_sub(gutter_w);
+    rows.into_iter()
+        .enumerate()
+        .map(|(i, spans)| {
+            let mut out = truncate_spans(spans, content_w);
+            if line_numbers {
+                let digits = gutter_w.saturating_sub(3);
+                out.insert(
+                    0,
+                    Span::new(format!("{:>digits$} │ ", i + 1), Style::role(Role::Dim)),
+                );
+            }
+            Line {
+                spans: out,
+                no_wrap: true,
+            }
+        })
+        .collect()
+}
+
+/// Width of the line-number gutter for a code block of `rows` lines (digits + `" │ "`).
+fn gutter_width(rows: usize) -> usize {
+    rows.max(1).to_string().len() + 3
 }
 
 impl Style {
@@ -225,12 +251,18 @@ fn empty() -> Span {
     Span::plain("")
 }
 
-fn layout_list(ordered: bool, start: u64, items: &[Item], w: usize) -> Vec<Line> {
+fn layout_list(
+    ordered: bool,
+    start: u64,
+    items: &[Item],
+    w: usize,
+    line_numbers: bool,
+) -> Vec<Line> {
     let mut out = Vec::new();
     for (idx, item) in items.iter().enumerate() {
         let marker = item_marker(ordered, start, idx, item.task);
         let mw = width(&marker);
-        let inner = layout_blocks(&item.blocks, w.saturating_sub(mw));
+        let inner = layout_blocks(&item.blocks, w.saturating_sub(mw), line_numbers);
         let first = Span::new(marker, Style::role(Role::Marker));
         let cont = Span::plain(" ".repeat(mw));
         out.extend(prefixed(inner, &first, &cont));
@@ -247,7 +279,7 @@ fn item_marker(ordered: bool, start: u64, idx: usize, task: Option<bool>) -> Str
     }
 }
 
-fn layout_callout(kind: CalloutKind, blocks: &[Block], w: usize) -> Vec<Line> {
+fn layout_callout(kind: CalloutKind, blocks: &[Block], w: usize, line_numbers: bool) -> Vec<Line> {
     let bar = Span::new("▎ ", Style::role(Role::Accent));
     let bw = width(&bar.text);
     let (icon, name) = callout_label(kind);
@@ -265,7 +297,11 @@ fn layout_callout(kind: CalloutKind, blocks: &[Block], w: usize) -> Vec<Line> {
         ],
         no_wrap: false,
     };
-    let body = prefixed(layout_blocks(blocks, w.saturating_sub(bw)), &bar, &bar);
+    let body = prefixed(
+        layout_blocks(blocks, w.saturating_sub(bw), line_numbers),
+        &bar,
+        &bar,
+    );
     let mut out = vec![header];
     out.extend(body);
     out
@@ -486,7 +522,7 @@ mod tests {
     use crate::md::parse::parse;
 
     fn layout_doc(md: &str, w: usize) -> Vec<Line> {
-        layout_blocks(&parse(md).blocks, w)
+        layout_blocks(&parse(md).blocks, w, false)
     }
 
     /// No line may exceed the width (the core wrap invariant).
@@ -579,6 +615,17 @@ mod tests {
     }
 
     #[test]
+    fn code_line_numbers_gutter() {
+        let with = layout_document(&parse("```\nfoo\nbar\n```").blocks, 80, true).lines;
+        assert!(with[0].plain_text().starts_with("1 │ foo"));
+        assert!(with[1].plain_text().starts_with("2 │ bar"));
+        // without the flag, no gutter
+        let plain = layout_document(&parse("```\nfoo\nbar\n```").blocks, 80, false).lines;
+        assert!(!plain[0].plain_text().contains('│'));
+        assert_eq!(plain[0].plain_text(), "foo");
+    }
+
+    #[test]
     fn code_block_is_nowrap() {
         let lines = layout_doc("```\nfn main() {}\n```", 80);
         assert_eq!(lines.len(), 1);
@@ -611,7 +658,7 @@ mod tests {
 
     #[test]
     fn doclayout_indexes_headings_with_line_positions() {
-        let doc = layout_document(&parse("# One\n\nbody text\n\n## Two").blocks, 80);
+        let doc = layout_document(&parse("# One\n\nbody text\n\n## Two").blocks, 80, false);
         assert_eq!(doc.headings.len(), 2);
         assert_eq!(
             doc.headings[0],
@@ -633,6 +680,7 @@ mod tests {
         let doc = layout_document(
             &parse("intro\n\n```rust\nlet x = 1;\nlet y = 2;\n```").blocks,
             80,
+            false,
         );
         assert_eq!(doc.code_blocks.len(), 1);
         let c = &doc.code_blocks[0];
@@ -643,7 +691,11 @@ mod tests {
 
     #[test]
     fn doclayout_indexes_links_with_lines() {
-        let doc = layout_document(&parse("see [the docs](https://x.io) here").blocks, 80);
+        let doc = layout_document(
+            &parse("see [the docs](https://x.io) here").blocks,
+            80,
+            false,
+        );
         assert_eq!(doc.links.len(), 1);
         assert_eq!(doc.links[0].url, "https://x.io");
         assert_eq!(doc.links[0].text, "the docs");
@@ -652,7 +704,7 @@ mod tests {
 
     #[test]
     fn doclayout_text_parallels_lines() {
-        let doc = layout_document(&parse("# H\n\nsome text").blocks, 80);
+        let doc = layout_document(&parse("# H\n\nsome text").blocks, 80, false);
         assert_eq!(doc.text.len(), doc.lines.len());
         for (t, l) in doc.text.iter().zip(&doc.lines) {
             assert_eq!(*t, l.plain_text());
@@ -664,7 +716,7 @@ mod tests {
     fn reference_fixture_lays_out_within_widths() {
         let doc = parse(include_str!("../../tests/fixtures/mdterm-test.md"));
         for w in [44, 80, 120] {
-            let lines = layout_blocks(&doc.blocks, w);
+            let lines = layout_blocks(&doc.blocks, w, false);
             assert!(!lines.is_empty());
             assert_within(&lines, w);
         }
