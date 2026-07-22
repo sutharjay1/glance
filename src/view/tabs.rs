@@ -4,6 +4,8 @@
 //! are preserved when switching. The holder itself is trivial; keeping it separate makes the
 //! next/prev cycling testable without a terminal.
 
+use std::path::{Path, PathBuf};
+
 use crate::view::state::ViewerState;
 
 pub struct Tabs {
@@ -56,6 +58,28 @@ impl Tabs {
         for t in &mut self.tabs {
             t.on_resize(width, height);
         }
+    }
+
+    /// Canonical paths of all tabs backed by a file (for filesystem watching).
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.tabs
+            .iter()
+            .filter_map(|t| t.canonical_path())
+            .collect()
+    }
+
+    /// Reload every tab whose file is `path`. Returns whether the *active* tab changed — the
+    /// only case that needs a repaint now (background tabs just refresh in place and show fresh
+    /// content when next selected).
+    pub fn reload_path(&mut self, path: &Path) -> bool {
+        let active = self.active;
+        let mut active_changed = false;
+        for (i, t) in self.tabs.iter_mut().enumerate() {
+            if t.canonical_path().as_deref() == Some(path) && t.reload() && i == active {
+                active_changed = true;
+            }
+        }
+        active_changed
     }
 
     /// The tab-bar label, e.g. `[2/3 guide.md]` — `None` for a single tab.

@@ -5,6 +5,18 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: auto-reload (notify + debounce) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- New `view::watch` module, split so the tricky part is testable: **`Debouncer`** (pure, clock-injected) coalesces a save burst per path — a path is *ready* only after it's been quiet ≥120 ms (`saturating_duration_since`), so editor write→rename→truncate bursts yield one reload, not several mid-write flashes (3 unit tests: quiet-window, timer-reset, independent paths). **`FileWatcher`** is thin `notify` wiring — watches each open file's **parent directory** (editors replace files by rename, which breaks a watch on the inode) and forwards only events whose canonical path is one we hold. `notify::recommended_watcher` is immediate-mode, so our debouncer owns the policy.
+- `ViewerState::reload()` re-reads its own file **in place** preserving scroll + active search (re-parse → re-layout → clamp `top` → re-run stored `Search`); an **empty read is ignored** (mid-write truncation guard). `canonical_path()` matches watch events to tabs. `Tabs::paths()`/`reload_path()` reload every tab on a changed path and report whether the **active** one changed (only that needs a repaint; background tabs refresh silently).
+- Event loop now has two wake sources: with files open it `event::poll(50 ms)` so reloads fire while idle; with no file (piped stdin) it keeps the original blocking `event::read()` — zero idle CPU. A reload sets a `reloaded` toast + full repaint.
+- Added `notify = "6"`. 1 reload test (temp file, scroll+search preserved, empty-read ignored) + 3 debouncer tests. **165 total green**, fmt + clippy clean. Interactive watch path is I/O — PTY-tested later, like the rest of the loop.
+
+**Next:** Phase 2 remainders — OSC 11 auto-theme (query terminal bg → pick dark/light unless `-T` overrides), click-to-copy (mouse-click a code block/section to copy). Then Phase 2 closes.
+
+---
+
 ## 2026-07-22 — Phase 2: multi-file tabs (Tab/Shift+Tab) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

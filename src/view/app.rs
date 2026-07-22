@@ -10,6 +10,7 @@
 //! tests (spawn, scroll, quit, assert clean teardown) rather than unit tests.
 
 use std::io::{self, Write};
+use std::time::{Duration, Instant};
 
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{self, DisableMouseCapture, EnableMouseCapture};
@@ -32,6 +33,13 @@ use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
 use crate::view::tabs::Tabs;
+use crate::view::watch::{Debouncer, FileWatcher};
+
+/// Debounce window for auto-reload: a file must be quiet this long after its last change event
+/// before we re-read it (coalesces an editor's write→rename→truncate burst into one reload).
+const RELOAD_DEBOUNCE: Duration = Duration::from_millis(120);
+/// How long to block for terminal input between watcher checks (only when watching files).
+const POLL_TICK: Duration = Duration::from_millis(50);
 
 /// Input mode of the viewer: `/` search prompt, `o` TOC, `:` fuzzy filter, `f` link picker,
 /// `h`/`?` help, or normal document navigation.
@@ -155,7 +163,36 @@ pub fn run(
         &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
     )?;
 
+    // Auto-reload: watch every open file's directory; a settled change re-reads that tab in
+    // place. `None` (no files, e.g. piped stdin, or a watch error) keeps the classic blocking loop.
+    let watcher = FileWatcher::new(&tabs.paths()).unwrap_or(None);
+    let mut debouncer = Debouncer::new(RELOAD_DEBOUNCE);
+
     loop {
+        // Fold in filesystem events, then reload any file that has gone quiet.
+        if let Some(w) = &watcher {
+            let now = Instant::now();
+            for p in w.drain() {
+                debouncer.mark(p, now);
+            }
+            if !debouncer.is_empty() {
+                let mut redraw = false;
+                for p in debouncer.ready(Instant::now()) {
+                    redraw |= tabs.reload_path(&p);
+                }
+                if redraw {
+                    tabs.active_mut().set_toast("reloaded");
+                    draw(
+                        &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
+                    )?;
+                }
+            }
+        }
+
+        // Block for input — but only briefly when watching, so reloads still fire while idle.
+        if watcher.is_some() && !event::poll(POLL_TICK)? {
+            continue;
+        }
         match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
                 tabs.resize_all(cols as usize, rows as usize);

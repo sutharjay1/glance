@@ -9,3 +9,4 @@ pub mod render;
 pub mod search;
 pub mod state;
 pub mod tabs;
+pub mod watch;

@@ -171,6 +171,37 @@ impl ViewerState {
         !self.history.is_empty()
     }
 
+    /// The current file's canonical path (for matching filesystem-watch events), if any.
+    pub fn canonical_path(&self) -> Option<PathBuf> {
+        self.path
+            .as_ref()
+            .and_then(|p| std::fs::canonicalize(p).ok())
+    }
+
+    /// Re-read the current file in place, preserving scroll position and any active search
+    /// (re-parse → re-layout → clamp `top` → re-run the stored search). Returns `true` when the
+    /// document was replaced. A transient empty read (a save in progress) is ignored — the old
+    /// document is kept rather than blanking the view.
+    pub fn reload(&mut self) -> bool {
+        let Some(path) = self.path.clone() else {
+            return false;
+        };
+        let Ok(input) = std::fs::read_to_string(&path) else {
+            return false;
+        };
+        if input.is_empty() {
+            return false; // mid-write truncation; the next event will re-trigger us
+        }
+        let anchor = self.top;
+        self.blocks = parse(&input).blocks;
+        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
+        self.top = anchor.min(self.max_top());
+        if let Some(s) = &self.search {
+            self.search = Some(Search::new(&s.query, &self.doc.text));
+        }
+        true
+    }
+
     /// The largest valid `top` — keeps the last screenful on screen.
     pub fn max_top(&self) -> usize {
         self.doc.len().saturating_sub(self.height)
@@ -477,5 +508,39 @@ mod tests {
     fn file_path_none_for_stdin() {
         let s = state("x", 80, 4);
         assert_eq!(s.file_path_string(), None);
+    }
+
+    #[test]
+    fn reload_replaces_doc_preserving_scroll_and_search() {
+        use std::io::Write;
+        // A unique temp file so parallel test runs don't collide.
+        let mut path = std::env::temp_dir();
+        path.push(format!("glance-reload-{}.md", std::process::id()));
+        std::fs::write(&path, tall(50)).unwrap();
+
+        let blocks = parse(&tall(50)).blocks;
+        let mut s = ViewerState::new(blocks, 80, 10, Some(path.clone()), false);
+        s.scroll(20);
+        s.run_search("line30");
+        let top_before = s.top;
+
+        // Rewrite with more content; reload should pick it up in place.
+        let mut f = std::fs::File::create(&path).unwrap();
+        write!(f, "{}", tall(80)).unwrap();
+        f.flush().unwrap();
+        drop(f);
+
+        assert!(s.reload());
+        assert!(s.doc.len() >= tall(80).lines().count()); // grew
+        assert_eq!(s.top, top_before.min(s.max_top())); // scroll preserved (clamped)
+        assert!(s.search.is_some()); // active search survives reload
+
+        // An empty (mid-write) read is ignored — old doc kept.
+        std::fs::write(&path, "").unwrap();
+        let len_before = s.doc.len();
+        assert!(!s.reload());
+        assert_eq!(s.doc.len(), len_before);
+
+        let _ = std::fs::remove_file(&path);
     }
 }

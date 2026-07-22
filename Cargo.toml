@@ -25,6 +25,7 @@ lexopt = "0.3"           # tiny, fast CLI parsing (small-binary priority)
 serde = { version = "1", features = ["derive"] }  # config deserialization
 toml = "0.8"             # ~/.config/glance/config.toml
 regex = "1"              # in-document search
+notify = "6"             # auto-reload file watching (inotify/FSEvents/ReadDirectoryChangesW)
 
 [dev-dependencies]
 insta = "1"  # golden snapshot tests
