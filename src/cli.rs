@@ -18,6 +18,7 @@ pub struct Args {
     pub export: Option<String>,
     pub no_color: bool,
     pub pipe: bool,
+    pub timing: bool,
     pub help: bool,
     pub version: bool,
 }
@@ -40,6 +41,7 @@ pub fn parse(args: &[String]) -> Result<Args, lexopt::Error> {
             Long("export") => out.export = Some(parser.value()?.string()?),
             Long("no-color") => out.no_color = true,
             Long("pipe") => out.pipe = true,
+            Long("timing") => out.timing = true,
             Short('h') | Long("help") => out.help = true,
             Short('V') | Long("version") => out.version = true,
             Value(v) => out.files.push(v.string()?),
@@ -82,9 +84,16 @@ mod tests {
 
     #[test]
     fn equals_form_and_booleans() {
-        let a = parse_ok(&["--theme=dark", "--no-color", "--pipe", "--slides", "-f"]);
+        let a = parse_ok(&[
+            "--theme=dark",
+            "--no-color",
+            "--pipe",
+            "--slides",
+            "-f",
+            "--timing",
+        ]);
         assert_eq!(a.theme.as_deref(), Some("dark"));
-        assert!(a.no_color && a.pipe && a.slides && a.follow);
+        assert!(a.no_color && a.pipe && a.slides && a.follow && a.timing);
     }
 
     #[test]

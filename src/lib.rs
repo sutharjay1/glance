@@ -81,6 +81,24 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
+    // `--timing`: measure launch→first-paint (parse + viewport layout) and exit. This is the
+    // number the perf gate guards — it must stay well under 80 ms (ADR 0004).
+    if parsed.timing {
+        let t0 = std::time::Instant::now();
+        let blocks = md::parse::parse(&input).blocks;
+        let t_parse = t0.elapsed();
+        let doc = md::layout::layout_document(&blocks, width_override.unwrap_or(80));
+        let t_total = t0.elapsed();
+        eprintln!(
+            "glance --timing: parse {:.2?}, parse+layout {:.2?} ({} lines, {} bytes)",
+            t_parse,
+            t_total,
+            doc.len(),
+            input.len()
+        );
+        return 0;
+    }
+
     let is_tty = std::io::stdout().is_terminal();
 
     // Interactive TUI when we own a terminal and weren't asked to pipe.

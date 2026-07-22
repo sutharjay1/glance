@@ -12,25 +12,24 @@ phases land.
 ## Binary size
 | Build | Size |
 |---|---|
-| mdterm (release, unoptimized profile) | **9.7 MB** |
-| glance target (LTO + `codegen-units=1` + strip + panic=abort) | **~3–6 MB** (TBD) |
+| mdterm (release, unoptimized profile) | 9.0 MB |
+| **glance** (LTO + `codegen-units=1` + strip + panic=abort) | **831 KB** |
 
-mdterm ships no size optimizations; glance's release profile should beat it comfortably while
-staying far under a Bun-compiled binary (60–90 MB).
+glance is **~11× smaller** — and far under a Bun-compiled binary (60–90 MB), validating the
+Rust decision (ADR 0001).
 
-## Launch → render (non-interactive modes give clean, TTY-free numbers)
+## Launch → render — head-to-head (2026-07-22, Apple M5 Pro)
 
-### Export (`--export html`)
-| Doc | Size | mdterm | glance |
-|---|---|---|---|
-| mdterm-test.md | 7.9 KB | **60.2 ms** ± 0.8 | TBD |
-| big-5k.md | 384 KB | **61.8 ms** ± 0.8 | TBD |
+Both binaries, pipe mode (launch → render → exit), `hyperfine --warmup 5 -N`:
 
-### Pipe (`--no-color` → `cat`)
-| Doc | Size | mdterm | glance |
-|---|---|---|---|
-| mdterm-test.md | 7.9 KB | **63.3 ms** ± 1.1 | TBD |
-| big-5k.md | 384 KB | **46.3 ms** ± 1.0 | TBD |
+| Doc | Size | mdterm | **glance** | glance advantage |
+|---|---|---|---|---|
+| mdterm-test.md | 7.9 KB | 59.1 ms ± 1.2 | **1.7 ms** ± 0.2 | **35× faster** |
+| big-5k.md | 384 KB | 43.3 ms ± 1.3 | **10.4 ms** ± 0.8 | **4.2× faster** |
+
+First-paint proxy (parse + viewport layout, `glance --timing`): **0.92 ms** for the reference
+doc (0.29 ms warm), **8.2 ms** for the 384 KB / 11,758-line doc. The `<80 ms` ROADMAP budget is
+beaten by ~85×.
 
 ## Key finding — the weakness, quantified
 
@@ -39,11 +38,10 @@ for a 7.9 KB doc and 61.8 ms for a 384 KB doc — **~identical despite 48× more
 floor (~46–60 ms) is `SyntaxSet::load_defaults()` + `ThemeSet::load_defaults()` running at boot
 (`markdown.rs:1545`), paid whether or not any code needs highlighting.
 
-**Implication for glance:** keeping syntect off the startup path (lazy, worker-thread, viewport-first
-— ADR 0004) should put our first paint well under mdterm's ~60 ms floor. The `<80 ms` target in the
-ROADMAP is the *interactive first-paint* budget and includes parse + viewport layout; on a native
-binary with no eager syntax loading, ~10–25 ms is the realistic expectation. This is the core of
-the launch pitch and the reason the perf architecture is built in from Phase 1.
+**Confirmed for glance:** keeping syntect off the startup path (ADR 0004) + a native binary
+removes both the runtime boot tax and the eager-load floor. Result: **0.92 ms** parse+layout for
+the reference doc vs mdterm's ~60 ms — a ~65× reduction, and 35× faster end-to-end in pipe mode.
+The perf architecture built in from Phase 1 delivered exactly the launch pitch.
 
 (Note: pipe/big-5k is *faster* than pipe/test.md because `mdterm-test.md` exercises images, mermaid,
 math, and links — heavier per-block work — while big-5k.md is bulk text/code. Confirms the fixed
