@@ -5,4 +5,5 @@
 //! sequences (`osc`). We build directly on the terminal rather than a TUI framework so the
 //! render path — first-paint latency and damage frames — stays under our control (ADR 0003).
 
+pub mod ansi;
 pub mod caps;

@@ -28,7 +28,7 @@ Ground the README comparison table and de-risk the vendored modules.
 
 ## Phase 1 — viewer core (week 1–2)  🟨  ← risky foundation
 Term layer → parse → layout → paint → render → navigation → pipe mode → config. Built one TDD module per loop iteration.
-- **term:** ✅ `caps` (color-depth detection) · ⬜ `ansi` (SGR + downsampling) · ⬜ `input` · ⬜ `osc` · ⬜ `TerminalGuard`
+- **term:** ✅ `caps` (color-depth detection) · ✅ `ansi` (SGR + truecolor→256→16 downsampling) · ⬜ `osc` · ⬜ `input` · ⬜ `TerminalGuard`
 - **md:** ⬜ `parse` · ⬜ `layout` · ⬜ `highlight` (micro-tokenizer)
 - **render/view:** ⬜ `paint` · ⬜ `render` (damage diff) · ⬜ `state`+`app` (event loop) · ⬜ navigation
 - **modes/cli:** ⬜ pipe/TTY · ⬜ `cli` (lexopt) · ⬜ `config` (toml)
