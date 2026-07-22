@@ -202,9 +202,20 @@ mod tests {
         use crate::view::search::Search;
         let d = doc("find the target word here", 80);
         let s = Search::new("target", &d.text);
-        let f = build_frame(&d, 0, 3, &theme::dark(), ColorDepth::TrueColor, false, Some(&s));
+        let f = build_frame(
+            &d,
+            0,
+            3,
+            &theme::dark(),
+            ColorDepth::TrueColor,
+            false,
+            Some(&s),
+        );
         // the matched row carries a reverse-video SGR (7) from the highlight
-        assert!(f.iter().any(|row| row.contains("\x1b[7;")), "no reverse-video highlight in {f:?}");
+        assert!(
+            f.iter().any(|row| row.contains("\x1b[7;")),
+            "no reverse-video highlight in {f:?}"
+        );
         // an unsearched render of the same doc has none
         let plain = build_frame(&d, 0, 3, &theme::dark(), ColorDepth::TrueColor, false, None);
         assert!(!plain.iter().any(|row| row.contains("\x1b[7;")));

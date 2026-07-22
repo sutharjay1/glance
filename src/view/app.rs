@@ -19,16 +19,19 @@ use crossterm::terminal::{
 use crossterm::{execute, queue};
 
 use crate::md::parse::Block;
+use crate::paint::paint;
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key};
 use crate::theme::Theme;
+use crate::view::overlays::Toc;
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
 
-/// Input mode of the viewer. `Search(query)` is the `/` prompt collecting a query.
+/// Input mode of the viewer: the `/` search prompt, the `o` table-of-contents overlay, or normal.
 enum Mode {
     Normal,
     Search(String),
+    Toc(Toc),
 }
 
 /// RAII terminal setup/teardown. Enter on construction, restore on drop.
@@ -116,6 +119,13 @@ pub fn run(
                 match std::mem::replace(&mut mode, Mode::Normal) {
                     Mode::Normal => match k {
                         Key::Char('/') => mode = Mode::Search(String::new()),
+                        Key::Char('o') => {
+                            let toc = Toc::new(&state.doc.headings);
+                            if !toc.is_empty() {
+                                mode = Mode::Toc(toc);
+                                full = true; // overlay replaces the screen
+                            }
+                        }
                         other => match state.on_key(other) {
                             Action::Quit => break,
                             Action::Redraw => {}
@@ -138,6 +148,27 @@ pub fn run(
                         Key::Esc => full = true, // cancel input; mode already Normal
                         _ => mode = Mode::Search(query),
                     },
+                    Mode::Toc(mut toc) => {
+                        full = true; // overlay is a full-screen repaint either way
+                        match k {
+                            Key::Char('j') | Key::Down => {
+                                toc.down();
+                                mode = Mode::Toc(toc);
+                            }
+                            Key::Char('k') | Key::Up => {
+                                toc.up();
+                                mode = Mode::Toc(toc);
+                            }
+                            Key::Enter => {
+                                if let Some(line) = toc.selected_line() {
+                                    state.center_on(line);
+                                }
+                                // mode already Normal → overlay closes
+                            }
+                            Key::Esc | Key::Char('o') | Key::Char('q') => {} // close
+                            _ => mode = Mode::Toc(toc),                      // stay open
+                        }
+                    }
                 }
                 draw(
                     &mut out, &state, &theme, depth, hyperlinks, &mut prev, full, &mode,
@@ -161,16 +192,28 @@ fn draw(
     force_full: bool,
     mode: &Mode,
 ) -> io::Result<()> {
-    let mut frame = build_frame(
-        &state.doc,
-        state.top,
-        state.height,
-        theme,
-        depth,
-        hyperlinks,
-        state.search.as_ref(),
-    );
-    // Overlay the search prompt / status on the bottom row when relevant.
+    let mut frame = match mode {
+        // The TOC overlay takes over the screen.
+        Mode::Toc(toc) => {
+            let mut f: Vec<String> = toc
+                .view(state.width, state.height)
+                .iter()
+                .map(|l| paint(l, theme, depth, hyperlinks))
+                .collect();
+            f.resize(state.height, String::new());
+            f
+        }
+        _ => build_frame(
+            &state.doc,
+            state.top,
+            state.height,
+            theme,
+            depth,
+            hyperlinks,
+            state.search.as_ref(),
+        ),
+    };
+    // Overlay the prompt / status on the bottom row when relevant.
     if let Some(status) = status_line(state, mode) {
         if let Some(last) = frame.last_mut() {
             *last = status;
@@ -188,6 +231,11 @@ fn draw(
 fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
     match mode {
         Mode::Search(query) => Some(format!("/{query}")),
+        Mode::Toc(toc) => Some(format!(
+            "TOC  {}/{}  · j/k move · Enter jump · Esc close",
+            toc.selected_index() + 1,
+            toc.len()
+        )),
         Mode::Normal => state.search.as_ref().map(|s| {
             if s.is_empty() {
                 format!("/{}  no matches", s.query)
