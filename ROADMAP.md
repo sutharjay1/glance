@@ -44,7 +44,7 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 **Exit:** parity on nav/copy/link UX; copy verified macOS, Linux X11+Wayland, SSH (interactive paths PTY-tested in a later pass).
 
 ## Phase 3 — highlight + images (week 4)  🟨
-syntect (lazy, worker, viewport-first) + Kitty & half-block image ladder (vendored).
+- ✅ syntect highlighter **core** (`md::syntect_hl`): parsing-only (no theme engine), scope→`Role` mapping, lazy `OnceLock` `SyntaxSet` **off the startup path**; +500 KB / 2.5 MB total (3.6× < mdterm) · ⬜ background highlight worker (thread + channel, visible-first, patch+repaint) · ⬜ image ladder (vendor `image.rs`, Kitty + half-block, capability probe, bg fetch/decode/scale, placeholder, crop cache)
 **Exit:** code-heavy + image-heavy docs still first-paint < 80 ms.
 
 ## Phase 4 — differentiators (week 5)  ⬜

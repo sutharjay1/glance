@@ -5,6 +5,17 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 3: syntect highlighter core (scope→role) · JAY-93
+**Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- **Size checkpoint first (spike):** added syntect, forced its default dump to link via a temp probe, measured `--release`: **+500 KB → 2.48 MB total** (baseline had already grown to 1981 KB from regex/notify/toml — the 831 KB figure was Phase-1-scaffold-only). 2.48 MB is still **3.6× smaller than mdterm's 9 MB** and well under the 3 MB stop-threshold, so I proceeded without interrupting. Reverted the spike; corrected `docs/benchmarks.md` size table.
+- New `md::syntect_hl` — the *accurate* highlighter (75 languages). **Parsing-only** syntect (features `parsing`/`default-syntaxes`/`regex-fancy`, no theme engine, no onig C dep): each token's syntect **scope** is mapped to our existing `Role` enum (`comment`→Comment, `string`→Str, `constant.numeric`→Number, `entity.name.function`→Function, `keyword`/`storage`→Keyword), so glance's own dark/light + OSC 11 theming colors it and the binary stays small. `SyntaxSet` loads lazily via `OnceLock` — **never on the startup path** (mdterm's bug); the micro-tokenizer stays the instant cold path. `highlight(code, lang) -> Option<Vec<Vec<Span>>>` returns `None` for unknown langs (caller keeps the micro-tokenizer). 4 unit tests (unknown→None, rust keyword/string/comment roles, alias resolution, numbers).
+- **172 total green**, fmt + clippy clean. Currently unused → DCE'd from the shipped binary (still ~2.0 MB); the +500 KB lands when the worker wires it in next.
+
+**Next:** wire the **background highlight worker** — a thread that owns the `SyntaxSet`, receives (block content, lang, id) requests (visible blocks first), and sends highlighted spans back over a channel; the event loop (which already polls for watcher events) patches the affected code block's layout lines and repaints. Then the image ladder.
+
+---
+
 ## 2026-07-22 — Phase 2: click-to-copy → **PHASE 2 COMPLETE** · JAY-92
 **Phase:** 2 (✅) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

@@ -7,3 +7,4 @@
 pub mod highlight;
 pub mod layout;
 pub mod parse;
+pub mod syntect_hl;
