@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: md::layout (wrap engine) + style model · JAY-91
+**Phase:** 1 (🟨) · **Focus:** markdown pipeline · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Added `style` module — the `Line`/`Span`/`Style`/`Role` model (semantic styles + link href), the handoff between layout and paint.
+- Shipped `md::layout` core: `Block × width → Vec<Line>`. Word-wrap uses the `text::width` ASCII fast path + incremental accumulation (plan §8). Hanging indents via first/cont prefixes (markers never repeat); blockquote bars + callout panels (icon+NAME header, barred body); ordered/task list markers; code as `no_wrap` lines; thematic breaks fill width.
+- TDD: 12 tests incl. a **wrap-invariant property test** (`assert_within`: no line exceeds width) run at widths 10/20/40/80 and the real fixture at 44/80/120, plus a text round-trip. **62 total green**, fmt + clippy clean.
+- Deferred to next layout iteration: `(block,width)` cache, viewport-first slicing, DocLayout indices (headings/codeBlocks/links for search/nav/hit-testing), tables.
+
+**Next:** `paint` — `Line → ANSI` (theme + `term::ansi` downsampling + OSC 8 link runs). Unlocks a visible end-to-end pipe-mode render.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: md::parse (Block tree) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** markdown pipeline · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

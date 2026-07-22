@@ -6,6 +6,7 @@
 //! `docs/adr/` for the decisions behind this structure.
 
 pub mod md;
+pub mod style;
 pub mod term;
 pub mod text;
 

@@ -29,7 +29,7 @@ Ground the README comparison table and de-risk the vendored modules.
 ## Phase 1 — viewer core (week 1–2)  🟨  ← risky foundation
 Term layer → parse → layout → paint → render → navigation → pipe mode → config. Built one TDD module per loop iteration.
 - **term:** ✅ `caps` · ✅ `ansi` (downsampling) · ✅ `osc` (8/52/11) · ✅ `input` (crossterm→Event map) · ⬜ `TerminalGuard` (with event-loop wiring, PTY-tested)
-- **md:** ✅ `parse` (Block tree, sanitize, callouts, tasks; tables deferred) · ⬜ `layout` · ⬜ `highlight` (micro-tokenizer)
+- **md:** ✅ `parse` · 🟨 `layout` (wrap engine + hanging indents + callout panels + `style` model done; `(block,width)` cache + viewport-first + DocLayout indices + tables next) · ⬜ `highlight` (micro-tokenizer)
 - **render/view:** ⬜ `paint` · ⬜ `render` (damage diff) · ⬜ `state`+`app` (event loop) · ⬜ navigation
 - **modes/cli:** ⬜ pipe/TTY · ⬜ `cli` (lexopt) · ⬜ `config` (toml)
 **Exit:** `glance README.md` first-paint < 80 ms; smooth scroll; clean pipe; all §5 nav keys; snapshots green at 44/80/120.

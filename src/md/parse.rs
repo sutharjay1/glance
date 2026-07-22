@@ -605,7 +605,10 @@ mod tests {
         let md = include_str!("../../tests/fixtures/mdterm-test.md");
         let doc = parse(md);
         assert!(!doc.blocks.is_empty());
-        assert!(doc.blocks.iter().any(|b| matches!(b, Block::Heading { .. })));
+        assert!(doc
+            .blocks
+            .iter()
+            .any(|b| matches!(b, Block::Heading { .. })));
     }
 
     #[test]
