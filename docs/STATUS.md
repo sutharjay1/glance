@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: copy stack (fixes weakness #3) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `view::copy`: `copy()` tries **OSC 52 first** (`osc::clipboard_within`, ~100 KB cap) → SSH/tmux-safe, no external tool; else native per platform (macOS `pbcopy`; Linux `wl-copy`→`xclip`→`xsel`; Windows `clip`) via **error-handled** `Command` pipes — a missing binary degrades, never crashes. Returns method + the OSC 52 sequence for the caller to emit. `toast()` text helper.
+- `ViewerState`: `toast` field + `document_text` (`Y`), `nearest_code_block` by proximity to viewport top (`c`), `file_path_string` absolute (`p`).
+- `app`: `c`/`Y`/`p` in Normal — `copy_to` writes the OSC 52 seq to the terminal + sets a toast; `p` with no path → `(stdin — no path)`. Any keypress dismisses the toast; a toast takes the status row.
+- 7 tests (OSC 52 path, oversized-skips-OSC52, toast text, code-block proximity, path/doc). **155 total green**, fmt + clippy clean (commit a02d124). Reinstalled. **Reference weakness #3 fixed.**
+
+**Next:** help overlay (`h`/`?`) listing keybindings; then theme toggle (`t`) + OSC 11 auto-detect, line numbers (`l`), tabs, auto-reload.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: link picker (f) + local-file nav · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

@@ -39,7 +39,7 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 ## Phase 2 — interactivity (week 3)  🟨
 - ✅ **search**: `Search` core (regex + literal fallback, `n`/`N`, jump+center) + `/` prompt input mode + live reverse-video match highlighting + `query n/m` status line
 - ✅ TOC (`o`) · ✅ fuzzy filter (`:`) · ✅ link picker (`f`) + local-file nav (follow `.md`, platform opener) + `Backspace` history
-- ⬜ copy stack (OSC 52 + pbcopy/wl-copy/xclip/xsel/PowerShell + `p` + click-to-copy + toasts)
+- ✅ copy stack (OSC 52 first + pbcopy/wl-copy/xclip/xsel/clip + `c`/`Y`/`p` + toasts) — **fixes weakness #3**; ⬜ click-to-copy
 - ⬜ help overlay · ⬜ theme toggle (`t`) + OSC 11 auto · ⬜ line numbers (`l`) · ⬜ tabs (`Tab`) · ⬜ auto-reload
 **Exit:** parity on nav/copy/link UX; copy verified macOS, Linux X11+Wayland, SSH.
 
