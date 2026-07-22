@@ -5,6 +5,21 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: link picker (f) + local-file nav · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `open` module: `classify(url, base)` → `Url` / `LocalFile(resolved-against-current-dir)` / `Other`; `is_markdown`; `open_command` (macOS `open` / Linux `xdg-open` / Windows `start`) + `open_url` (spawns stdio-nulled, **errors swallowed** — a missing opener degrades, never crashes; plan §4.1).
+- `overlays::Links`: numbered link picker over `DocLayout.links`.
+- `ViewerState` file nav: `path` + `history` stack + `load(path)` (re-parse/layout, push history) + `back()` (Backspace restores prior file+scroll); `current_dir` for relative link resolution. `new()` now takes `Option<PathBuf>`.
+- `app`: `Mode::Links` — `f` opens; digits open directly; arrows+Enter open the selection; web/other→opener, local `.md`→load in-app, other local→opener. `Backspace`→back.
+- 7 tests (classify/markdown/opener + picker). **149 total green**, fmt + clippy clean (commit 1882aba). Reinstalled.
+
+**Next:** the copy stack — OSC 52 first + native fallbacks (pbcopy/wl-copy/xclip/xsel/PowerShell), `c` (nearest code block), `Y` (whole doc), `p` (file path), click-to-copy, toasts. Fixes reference weakness #3.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: fuzzy heading filter (:) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
