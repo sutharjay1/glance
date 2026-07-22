@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: paint + theme → 🎉 end-to-end render · JAY-91
+**Phase:** 1 (🟨) · **Focus:** render · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `paint` (`Line → ANSI`) + `theme` (dark/light, brand accent `#FF5800`). Link runs → single OSC 8 (internal link spaces carry href); dim ` (url)` fallback when hyperlinks off; `no_wrap` suppresses both; `ColorDepth::None` = clean plain text. Extended `osc` with `link_open`/`LINK_CLOSE`.
+- **Wired a provisional pipe render into `run()`** — `glance file.md` now parses → lays out → paints to stdout (colored on a TTY, plain when piped/`--no-color`). First visible end-to-end output.
+- Running it caught two real bugs unit tests missed: (1) multi-word links split into multiple OSC 8 runs → internal link spaces now carry the href; (2) word-splitting fabricated spaces before punctuation (`code ,`) → tokenizer rewritten to preserve whitespace boundaries with explicit `Space` tokens. Regression tests added.
+- **69 tests green**, fmt + clippy clean. Commits 4baaf19 (layout+style), 5a42628 (paint+theme+wiring).
+
+**Next:** `md::highlight` — regex micro-tokenizer (js/ts, py, rust, go, bash, sql) for instant code coloring; pure and testable.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: md::layout (wrap engine) + style model · JAY-91
 **Phase:** 1 (🟨) · **Focus:** markdown pipeline · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
