@@ -4,4 +4,5 @@
 
 pub mod app;
 pub mod render;
+pub mod search;
 pub mod state;

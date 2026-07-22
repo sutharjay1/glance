@@ -36,8 +36,11 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 - 🏆 **Perf thesis proven**: glance 1.7 ms vs mdterm 59.1 ms pipe render (35×); binary 831 KB vs 9 MB (11×). See [docs/benchmarks.md](docs/benchmarks.md). Installed to `~/.cargo/bin/glance`.
 **Exit:** `glance README.md` first-paint < 80 ms; smooth scroll; clean pipe; all §5 nav keys; snapshots green at 44/80/120.
 
-## Phase 2 — interactivity (week 3)  ⬜
-Search, TOC, fuzzy filter, link picker + local-file nav, copy stack (OSC 52 + fallbacks + `p` + click), help, theme toggle + OSC 11, line numbers, tabs, auto-reload.
+## Phase 2 — interactivity (week 3)  🟨
+- 🟨 **search**: ✅ `Search` core (regex + literal fallback, `n`/`N` cycle, jump+center) + state integration; ⬜ `/` prompt UI + match highlighting in render
+- ⬜ TOC (`o`) · ⬜ fuzzy filter (`:`) · ⬜ link picker (`f`) + local-file nav + `Backspace` history
+- ⬜ copy stack (OSC 52 + pbcopy/wl-copy/xclip/xsel/PowerShell + `p` + click-to-copy + toasts)
+- ⬜ help overlay · ⬜ theme toggle (`t`) + OSC 11 auto · ⬜ line numbers (`l`) · ⬜ tabs (`Tab`) · ⬜ auto-reload
 **Exit:** parity on nav/copy/link UX; copy verified macOS, Linux X11+Wayland, SSH.
 
 ## Phase 3 — highlight + images (week 4)  ⬜

@@ -24,6 +24,7 @@ pulldown-cmark = { version = "0.12", default-features = false }  # CommonMark + 
 lexopt = "0.3"           # tiny, fast CLI parsing (small-binary priority)
 serde = { version = "1", features = ["derive"] }  # config deserialization
 toml = "0.8"             # ~/.config/glance/config.toml
+regex = "1"              # in-document search
 
 [dev-dependencies]
 insta = "1"  # golden snapshot tests

@@ -9,6 +9,7 @@
 use crate::md::layout::{layout_document, DocLayout};
 use crate::md::parse::Block;
 use crate::term::input::{Key, Mouse};
+use crate::view::search::Search;
 
 /// What the event loop should do after handling an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,6 +33,8 @@ pub struct ViewerState {
     pub width: usize,
     /// Viewport height in rows.
     pub height: usize,
+    /// Active in-document search, if any (drives `n`/`N`, highlighting, and the status readout).
+    pub search: Option<Search>,
 }
 
 impl ViewerState {
@@ -43,6 +46,7 @@ impl ViewerState {
             top: 0,
             width,
             height,
+            search: None,
         }
     }
 
@@ -79,13 +83,64 @@ impl ViewerState {
         }
     }
 
-    /// Re-layout at a new terminal size, anchoring roughly to the current scroll line.
+    /// Scroll so `line` sits in the middle of the viewport (used to reveal a search match).
+    pub fn center_on(&mut self, line: usize) {
+        self.top = line.saturating_sub(self.height / 2).min(self.max_top());
+    }
+
+    /// Run a search, store it, and jump to the first match. Returns the match count. An empty
+    /// query clears any active search.
+    pub fn run_search(&mut self, query: &str) -> usize {
+        if query.is_empty() {
+            self.search = None;
+            return 0;
+        }
+        let s = Search::new(query, &self.doc.text);
+        let n = s.len();
+        let first = s.current().map(|m| m.line);
+        self.search = Some(s);
+        if let Some(line) = first {
+            self.center_on(line);
+        }
+        n
+    }
+
+    /// Cycle to the next / previous match and re-center on it.
+    pub fn search_next(&mut self) {
+        let line = self.search.as_mut().and_then(|s| {
+            s.next();
+            s.current().map(|m| m.line)
+        });
+        if let Some(line) = line {
+            self.center_on(line);
+        }
+    }
+
+    pub fn search_prev(&mut self) {
+        let line = self.search.as_mut().and_then(|s| {
+            s.prev();
+            s.current().map(|m| m.line)
+        });
+        if let Some(line) = line {
+            self.center_on(line);
+        }
+    }
+
+    pub fn clear_search(&mut self) {
+        self.search = None;
+    }
+
+    /// Re-layout at a new terminal size, anchoring roughly to the current scroll line. A live
+    /// search is re-run against the new layout so its match positions stay valid.
     pub fn on_resize(&mut self, width: usize, height: usize) {
         let anchor = self.top;
         self.width = width;
         self.height = height;
         self.doc = layout_document(&self.blocks, width);
         self.top = anchor.min(self.max_top());
+        if let Some(s) = &self.search {
+            self.search = Some(Search::new(&s.query, &self.doc.text));
+        }
     }
 
     /// Map a key to a navigation action (§5 movement subset).
@@ -103,6 +158,9 @@ impl ViewerState {
             Key::Char('G') | Key::End => self.to_bottom(),
             Key::Char(']') => self.next_heading(),
             Key::Char('[') => self.prev_heading(),
+            Key::Char('n') if self.search.is_some() => self.search_next(),
+            Key::Char('N') if self.search.is_some() => self.search_prev(),
+            Key::Esc if self.search.is_some() => self.clear_search(),
             Key::Char('q') | Key::Ctrl('c') => return Action::Quit,
             _ => return Action::Ignore,
         }
@@ -222,5 +280,53 @@ mod tests {
         assert_eq!(s.top, WHEEL_LINES as usize);
         s.on_mouse(Mouse::ScrollUp);
         assert_eq!(s.top, 0);
+    }
+
+    #[test]
+    fn search_finds_counts_and_activates() {
+        let mut s = state(
+            "alpha\n\nbeta target\n\ngamma\n\ndelta target\n\nend",
+            80,
+            4,
+        );
+        let n = s.run_search("target");
+        assert_eq!(n, 2);
+        assert_eq!(s.search.as_ref().unwrap().position(), 1);
+    }
+
+    #[test]
+    fn n_and_shift_n_cycle_via_key() {
+        let mut s = state("x\n\ntarget\n\ny\n\ntarget", 80, 2);
+        s.run_search("target");
+        let p1 = s.search.as_ref().unwrap().position();
+        assert_eq!(s.on_key(Key::Char('n')), Action::Redraw);
+        let p2 = s.search.as_ref().unwrap().position();
+        assert_ne!(p1, p2);
+        s.on_key(Key::Char('N'));
+        assert_eq!(s.search.as_ref().unwrap().position(), p1);
+    }
+
+    #[test]
+    fn esc_clears_search() {
+        let mut s = state("has target here", 80, 4);
+        s.run_search("target");
+        assert!(s.search.is_some());
+        assert_eq!(s.on_key(Key::Esc), Action::Redraw);
+        assert!(s.search.is_none());
+    }
+
+    #[test]
+    fn n_ignored_without_active_search() {
+        let mut s = state("hello", 80, 4);
+        assert_eq!(s.on_key(Key::Char('n')), Action::Ignore);
+        assert_eq!(s.on_key(Key::Esc), Action::Ignore);
+    }
+
+    #[test]
+    fn empty_query_clears_search() {
+        let mut s = state("has target", 80, 4);
+        s.run_search("target");
+        assert_eq!(s.run_search(""), 0);
+        assert!(s.search.is_none());
     }
 }

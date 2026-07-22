@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: search core · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `view::search`: pure `Search` over `DocLayout.text` — regex with literal fallback (invalid regex → escaped literal), all matches with (line, byte-range), `next`/`prev` wrapping cycle, `position()` for a `3/12` readout, `on_line()` for highlighting.
+- `ViewerState` integration: `run_search` (jump + `center_on` first match), `search_next`/`search_prev` (cycle + recenter), `clear_search`; `n`/`N`/`Esc` wired in `on_key` (gated on active search); resize re-runs the search against the new layout.
+- Added `regex` dep. TDD: 7 search + 5 state tests (regex, invalid-regex-fallback, cycle-wrap, empty, key handling). **124 total green**, fmt + clippy clean.
+
+**Next:** wire the `/` prompt UI (input mode in `view::app`) + highlight matches in `view::render` (using `Search::on_line`) — makes search interactive.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — ✅ Phase 1 COMPLETE (viewer core) · JAY-91
 **Phase:** 1 → **done** · **Branch:** `feature/jay-91-phase-1-viewer-core` (renamed from jay-89)
 
