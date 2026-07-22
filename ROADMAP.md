@@ -26,8 +26,12 @@ Ground the README comparison table and de-risk the vendored modules.
 - ✅ CI (`.github/workflows/ci.yml`): fmt/clippy/test, ubuntu+macos gating, windows non-gating (insta/PTY wired in Phase 1)
 - ◐ Deps added incrementally per phase (unicode-width now) to keep builds fast; `cargo-dist` config deferred to Phase 5 (launch)
 
-## Phase 1 — viewer core (week 1–2)  ⬜  ← risky foundation
-Term layer → parse → layout → paint → render → navigation → pipe mode → config.
+## Phase 1 — viewer core (week 1–2)  🟨  ← risky foundation
+Term layer → parse → layout → paint → render → navigation → pipe mode → config. Built one TDD module per loop iteration.
+- **term:** ✅ `caps` (color-depth detection) · ⬜ `ansi` (SGR + downsampling) · ⬜ `input` · ⬜ `osc` · ⬜ `TerminalGuard`
+- **md:** ⬜ `parse` · ⬜ `layout` · ⬜ `highlight` (micro-tokenizer)
+- **render/view:** ⬜ `paint` · ⬜ `render` (damage diff) · ⬜ `state`+`app` (event loop) · ⬜ navigation
+- **modes/cli:** ⬜ pipe/TTY · ⬜ `cli` (lexopt) · ⬜ `config` (toml)
 **Exit:** `glance README.md` first-paint < 80 ms; smooth scroll; clean pipe; all §5 nav keys; snapshots green at 44/80/120.
 
 ## Phase 2 — interactivity (week 3)  ⬜
