@@ -56,6 +56,23 @@ pub fn load() -> Config {
         .unwrap_or_default()
 }
 
+/// Whether a TOML string explicitly sets the `theme` key (vs. relying on the default). Used so
+/// OSC 11 auto-theme detection only kicks in when the user hasn't chosen a theme.
+pub fn has_theme_key(s: &str) -> bool {
+    toml::from_str::<toml::Value>(s)
+        .ok()
+        .and_then(|v| v.get("theme").cloned())
+        .is_some()
+}
+
+/// Whether the on-disk config file explicitly sets a theme.
+pub fn theme_is_configured() -> bool {
+    config_path()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| has_theme_key(&s))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +105,14 @@ mod tests {
             parse_str("this is not = valid = toml ]["),
             Config::default()
         );
+    }
+
+    #[test]
+    fn has_theme_key_detects_explicit_theme() {
+        assert!(has_theme_key("theme = \"light\""));
+        assert!(has_theme_key("width = 80\ntheme = \"dark\"\n"));
+        assert!(!has_theme_key("width = 80")); // no theme → not configured
+        assert!(!has_theme_key("")); // empty → default, not configured
+        assert!(!has_theme_key("garbage ][")); // malformed → treated as unset
     }
 }

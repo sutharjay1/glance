@@ -84,6 +84,58 @@ pub fn is_dark(bg: Rgb) -> bool {
     lum < 128.0
 }
 
+/// Query the terminal for its background color (OSC 11) and decide dark vs light. Best-effort:
+/// `None` when there's no TTY or the terminal doesn't answer. **Must run before entering the
+/// alternate screen.** A DSR cursor-position query (`ESC[6n`) is appended as a "fence": every
+/// VT-style terminal answers it and replies arrive in query order, so the read loop always
+/// terminates — even when the terminal ignores OSC 11 — with no reader thread and no keystroke
+/// theft. The raw bytes are consumed by our read, so nothing garbles the screen.
+#[cfg(unix)]
+pub fn detect_dark_background() -> Option<bool> {
+    use std::io::IsTerminal;
+
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        return None;
+    }
+    crossterm::terminal::enable_raw_mode().ok()?;
+    let reply = read_bg_reply();
+    let _ = crossterm::terminal::disable_raw_mode();
+    reply.and_then(|s| parse_bg_response(&s)).map(is_dark)
+}
+
+#[cfg(unix)]
+fn read_bg_reply() -> Option<String> {
+    use std::io::{Read, Write};
+
+    let mut out = std::io::stdout();
+    out.write_all(b"\x1b]11;?\x07\x1b[6n").ok()?; // OSC 11 query + DSR fence
+    out.flush().ok()?;
+
+    let mut stdin = std::io::stdin();
+    let mut buf = Vec::with_capacity(64);
+    let mut byte = [0u8; 1];
+    // Read until the DSR reply terminator 'R'; capped so a (very rare) non-DSR terminal can't
+    // hang us. OSC 11's reply contains only `rgb:` hex, so 'R' can only be the fence.
+    for _ in 0..256 {
+        match stdin.read(&mut byte) {
+            Ok(1) => {
+                buf.push(byte[0]);
+                if byte[0] == b'R' {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Non-Unix fallback: auto-detection is best-effort and skipped (default theme applies).
+#[cfg(not(unix))]
+pub fn detect_dark_background() -> Option<bool> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

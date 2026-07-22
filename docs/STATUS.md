@@ -5,6 +5,17 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: OSC 11 auto-theme · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- The pure half (OSC 11 reply parser `parse_bg_response` + `is_dark` luminance) already shipped in Phase 1 and is unit-tested (4/8/16-bit hex, BEL vs ST terminators, malformed rejection). This iteration adds the **thin I/O**: `term::osc::detect_dark_background()` — before the alt-screen, writes `ESC]11;?BEL` **plus a DSR `ESC[6n` fence** and reads stdin until the guaranteed `R` terminator. The fence is the key trick: every VT terminal answers DSR in query order, so the read always terminates even when OSC 11 is ignored — **no reader thread, no timeout, no keystroke theft**. Gated on both std streams being TTYs; `#[cfg(not(unix))]` stub returns `None` (best-effort, default theme).
+- **Explicit choice wins**: `config::has_theme_key()` (pure, tested) + `theme_is_configured()` detect an explicit `theme` in config; `lib` sets `theme_explicit = parsed.theme.is_some() || config::theme_is_configured()` and only auto-detects when it's false — `-T`/`--theme` and a configured theme both override detection. Falls back to the explicit/default value when the terminal doesn't answer.
+- **166 total green**, fmt + clippy clean. Interactive query path is I/O — PTY-tested later.
+
+**Next:** the last Phase 2 item — click-to-copy (mouse-click a code block to copy via the existing copy stack + toast; map click Y → doc line → nearest code block using `DocLayout` indices). Then Phase 2 is COMPLETE → Phase 3 (syntect lazy highlight + image ladder).
+
+---
+
 ## 2026-07-22 — Phase 2: auto-reload (notify + debounce) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

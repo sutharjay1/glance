@@ -70,6 +70,9 @@ pub fn run(args: &[String]) -> i32 {
     let theme_name = parsed.theme.as_deref().unwrap_or(&cfg.theme);
     let theme = theme::by_name(theme_name);
     let theme_dark = theme_name != "light";
+    // The user "chose" a theme iff they passed `-T` or set `theme` in config; only then does an
+    // explicit choice suppress OSC 11 auto-detection (applied in the interactive branch below).
+    let theme_explicit = parsed.theme.is_some() || config::theme_is_configured();
     let line_numbers = parsed.line_numbers || cfg.line_numbers;
     let no_color = parsed.no_color;
     let width_override = parsed.width.or((cfg.width > 0).then_some(cfg.width));
@@ -112,6 +115,14 @@ pub fn run(args: &[String]) -> i32 {
             ColorDepth::None
         } else {
             Capabilities::from_env(false).color
+        };
+        // Auto-pick dark/light from the terminal background (OSC 11) unless the user chose a
+        // theme explicitly. Runs before the alt-screen (inside `app::run`). Falls back to the
+        // explicit/default value when the terminal doesn't answer.
+        let theme_dark = if theme_explicit {
+            theme_dark
+        } else {
+            term::osc::detect_dark_background().unwrap_or(theme_dark)
         };
         // One tab per file: the first file is already read into `input`; read the rest here,
         // skipping any that fail (with a warning) so one bad path doesn't sink the session.
