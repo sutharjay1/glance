@@ -27,8 +27,10 @@ use crate::md::parse::Block;
 use crate::open::{self, classify, LinkTarget};
 use crate::paint::paint;
 use crate::stream::{key_pauses_follow, key_resumes_follow, StreamReader, StreamState};
+use crate::style::{Line as StyleLine, Span, Style};
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key, Mouse};
+use crate::text::width as text_width;
 use crate::theme::{self, Theme};
 use crate::view::copy;
 use crate::view::highlighter::{blocks_by_priority, HighlightRequest, Highlighter};
@@ -229,10 +231,12 @@ pub fn run(
     let width = width_override
         .filter(|&w| w > 0)
         .map_or(cols as usize, |w| w.min(cols as usize));
-    // One tab per document; per-tab scroll/search state is preserved across switches.
+    // One tab per document; per-tab scroll/search state is preserved across switches. The bottom
+    // row is reserved for the persistent status/hint bar, so the content viewport is `rows - 1`.
+    let content_rows = (rows as usize).saturating_sub(1).max(1);
     let states = docs
         .into_iter()
-        .map(|(blocks, path)| ViewerState::new(blocks, width, rows as usize, path, line_numbers))
+        .map(|(blocks, path)| ViewerState::new(blocks, width, content_rows, path, line_numbers))
         .collect();
     let mut tabs = Tabs::new(states);
     // Theme is toggled at runtime (`t`); it affects paint only, never layout.
@@ -390,7 +394,8 @@ pub fn run(
         }
         match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
-                tabs.resize_all(cols as usize, rows as usize);
+                // Reserve the bottom row for the status/hint bar (see `run`).
+                tabs.resize_all(cols as usize, (rows as usize).saturating_sub(1).max(1));
                 // Width changed → prior highlights + image renders are the wrong geometry.
                 requested.clear();
                 enqueue_tab(
@@ -769,12 +774,13 @@ fn draw(
             state.search.as_ref(),
         ),
     };
-    // Overlay the prompt / status on the bottom row when relevant.
-    if let Some(status) = status_line(state, mode, tabs.label()) {
-        if let Some(last) = frame.last_mut() {
-            *last = status;
-        }
-    }
+    // Append the persistent status/hint bar as its own (reserved) bottom row.
+    frame.push(status_bar(
+        &bar_text(state, mode, tabs.label()),
+        state.width,
+        theme,
+        depth,
+    ));
     let base = if force_full { None } else { prev.as_ref() };
     queue!(out, crossterm::style::Print(render(base, &frame)))?;
     out.flush()?;
@@ -782,46 +788,125 @@ fn draw(
     Ok(())
 }
 
-/// The bottom-row status line: the live `/` prompt while typing, or a `query  3/12` readout
-/// while a search is active.
-fn status_line(state: &ViewerState, mode: &Mode, tab_label: Option<String>) -> Option<String> {
+/// The default Normal-mode key legend shown on the status bar (truncated to width). Ordered by how
+/// commonly the shortcut is reached for; `q quit` leads so exiting is always discoverable.
+const LEGEND: &str =
+    " q quit · / search · o toc · f links · c copy · Y all · t theme · Tab files · h help ";
+
+/// The text for the status/hint bar: a contextual prompt while an overlay/search/toast is active,
+/// otherwise the key legend (with the tab label / streaming pill folded in).
+fn bar_text(state: &ViewerState, mode: &Mode, tab_label: Option<String>) -> String {
     match mode {
-        Mode::Search(query) => Some(format!("/{query}")),
-        Mode::Toc(toc) => Some(format!(
-            "TOC  {}/{}  · j/k move · Enter jump · Esc close",
+        Mode::Search(query) => format!(" /{query}"),
+        Mode::Toc(toc) => format!(
+            " TOC  {}/{}  · j/k move · Enter jump · Esc close",
             toc.selected_index() + 1,
             toc.len()
-        )),
-        Mode::Fuzzy(f) => Some(if f.count() == 0 {
-            format!(":{}  no matches", f.query)
-        } else {
-            format!(
-                ":{}  {}/{}  · ↑↓ Enter Esc",
-                f.query,
-                f.selected_index() + 1,
-                f.count()
-            )
-        }),
-        Mode::Links(l) => Some(format!(
-            "Links  {}/{}  · digits/↑↓ open · Enter · Esc",
+        ),
+        Mode::Fuzzy(f) => {
+            if f.count() == 0 {
+                format!(" :{}  no matches · Esc close", f.query)
+            } else {
+                format!(
+                    " :{}  {}/{}  · ↑↓ move · Enter jump · Esc close",
+                    f.query,
+                    f.selected_index() + 1,
+                    f.count()
+                )
+            }
+        }
+        Mode::Links(l) => format!(
+            " Links  {}/{}  · digits/↑↓ select · Enter open · Esc close",
             l.selected_index() + 1,
             l.len()
-        )),
-        Mode::Help => None, // the help overlay carries its own instructions
-        // Priority on the status row: a transient toast, then the search readout, then the
-        // streaming pill, then the multi-tab label.
-        Mode::Normal if state.toast().is_some() => state.toast().map(String::from),
-        Mode::Normal => state
-            .search
-            .as_ref()
-            .map(|s| {
-                if s.is_empty() {
-                    format!("/{}  no matches", s.query)
+        ),
+        Mode::Help => " Help  ·  press any key to close ".to_string(),
+        // A transient toast, then an active search readout, then the streaming pill, else the
+        // legend — each keeps the always-present `h help` reachable.
+        Mode::Normal => {
+            if let Some(t) = state.toast() {
+                return format!(" {t}  · h help ");
+            }
+            if let Some(s) = &state.search {
+                return if s.is_empty() {
+                    format!(" /{}  no matches · n/N cycle · Esc clear", s.query)
                 } else {
-                    format!("/{}  {}/{}", s.query, s.position(), s.len())
-                }
-            })
-            .or_else(|| state.stream_pill().map(String::from))
-            .or(tab_label),
+                    format!(
+                        " /{}  {}/{}  · n/N cycle · Esc clear",
+                        s.query,
+                        s.position(),
+                        s.len()
+                    )
+                };
+            }
+            if let Some(p) = state.stream_pill() {
+                return format!(" {p} ·{LEGEND}");
+            }
+            match tab_label {
+                Some(lbl) => format!(" {lbl} ·{LEGEND}"),
+                None => LEGEND.to_string(),
+            }
+        }
+    }
+}
+
+/// Render the bar `text` as a full-width reverse-video row (truncated / space-padded to `width`).
+fn status_bar(text: &str, width: usize, theme: &Theme, depth: ColorDepth) -> String {
+    let mut shown = String::new();
+    let mut w = 0;
+    for ch in text.chars() {
+        let cw = text_width(&ch.to_string());
+        if w + cw > width {
+            break;
+        }
+        w += cw;
+        shown.push(ch);
+    }
+    if w < width {
+        shown.push_str(&" ".repeat(width - w));
+    }
+    // Reverse video reads as a status bar at any color depth (it's an attribute, not a color).
+    let line = StyleLine {
+        spans: vec![Span::new(
+            shown,
+            Style {
+                highlight: true,
+                ..Default::default()
+            },
+        )],
+        no_wrap: true,
+    };
+    paint(&line, theme, depth, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::md::parse::parse;
+
+    fn state() -> ViewerState {
+        ViewerState::new(parse("# hi\n\nbody").blocks, 80, 24, None, false)
+    }
+
+    #[test]
+    fn legend_shows_quit_and_help() {
+        let bar = bar_text(&state(), &Mode::Normal, None);
+        assert!(bar.contains("q quit"), "legend must make exit discoverable");
+        assert!(bar.contains("h help"));
+        assert!(bar.contains("/ search"));
+    }
+
+    #[test]
+    fn multi_tab_label_folds_into_legend() {
+        let bar = bar_text(&state(), &Mode::Normal, Some("[2/3 b.md]".into()));
+        assert!(bar.contains("[2/3 b.md]"));
+        assert!(bar.contains("q quit"));
+    }
+
+    #[test]
+    fn status_bar_pads_to_exact_width() {
+        // Depth None → plain text (no ANSI), padded to the full width.
+        let out = status_bar(" hi ", 20, &theme::dark(), ColorDepth::None);
+        assert_eq!(out.chars().count(), 20);
     }
 }

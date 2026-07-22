@@ -41,6 +41,7 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 - ✅ TOC (`o`) · ✅ fuzzy filter (`:`) · ✅ link picker (`f`) + local-file nav (follow `.md`, platform opener) + `Backspace` history
 - ✅ copy stack (OSC 52 first + pbcopy/wl-copy/xclip/xsel/clip + `c`/`Y`/`p` + toasts) — **fixes weakness #3**; ✅ click-to-copy (left-click a code block → copy + toast)
 - ✅ help overlay (`h`/`?`) · ✅ theme toggle (`t`) · ✅ line numbers (`l`, gutter + `-l`/config) · ✅ tabs (`Tab`/`Shift+Tab`, per-file scroll, `[n/N name]` status) · ✅ auto-reload (`notify` + 120 ms debounce, preserves scroll + search) · ✅ OSC 11 auto-theme (bg query + DSR fence → luminance; `-T`/config overrides)
+- ✅ **persistent status/hint bar** (post-launch UX): reserves the bottom row (content viewport = `rows − 1`), reverse-video, always shows the key legend (`q quit · / search · o toc · f links · c copy · Y all · t theme · Tab files · h help`); swaps to a contextual prompt while an overlay/search/toast/stream-pill is active, with the tab label folded in. Makes *how to exit* always discoverable.
 **Exit:** parity on nav/copy/link UX; copy verified macOS, Linux X11+Wayland, SSH (interactive paths PTY-tested in a later pass).
 
 ## Phase 3 — highlight + images (week 4)  ✅

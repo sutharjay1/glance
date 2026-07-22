@@ -5,6 +5,16 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — UX: persistent status/hint bar (discoverable exit) · post-launch
+**Focus:** UX polish · **Branch:** `main`
+
+- **Problem:** nothing on screen told the user how to quit or what the keys do. Added a **persistent bottom status/hint bar** (vim/less-style).
+- The bottom row is now **reserved** for the bar — `run`/resize set the content viewport to `rows − 1` (`ViewerState.height`), so the bar never covers content (previously the status was overlaid on the last content row). `draw` appends the bar as an extra painted row → total = `height + 1` = terminal rows.
+- `bar_text` returns the bar content: a **key legend** in Normal mode (`q quit · / search · o toc · f links · c copy · Y all · t theme · Tab files · h help`), swapped for a contextual prompt while an overlay/search/toast/stream-pill is active (each still surfaces `h help` or `Esc close`). Multi-tab label folds into the legend. `status_bar` paints it **reverse-video** (depth-independent) padded to full width. Replaces the old `status_line` overlay.
+- 3 unit tests (legend has `q quit`/`h help`, tab label folds in, bar pads to exact width). **228 total green**, fmt + clippy clean, reinstalled.
+
+---
+
 ## 2026-07-22 — Phase 5: mermaid port → **ALL PORTS DONE, BUILD FEATURE-COMPLETE** · JAY-95
 **Phase:** 5 (🟨 — ports done, launch remains) · **Focus:** ports + launch · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
