@@ -5,6 +5,17 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 5: math port ($…$ → Unicode) · JAY-95
+**Phase:** 5 (🟨) · **Focus:** ports + launch · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- New `src/md/math.rs` — inline `$…$` LaTeX → Unicode. `math_to_unicode`: a ~120-entry symbol table (lower/upper Greek, big operators ∑∏∫, relations ≤≥≠≈, arrows →⇒↔, binary ops ×·±, set/logic ∈∀∃∪∩, misc ∞√∂∇…) + super/subscript conversion (`^2`→², `_1`→₁ via the Unicode blocks; groups converted recursively then scripted, all-or-nothing per group; unknown `\cmd` → bare name).
+- **The real subtlety** — markdown emphasis vs. math: pulldown parses `$x_i$`'s `_` as emphasis, which would split the math span across inlines. Fix: `preprocess_math` runs on the **raw source before pulldown** (wired in `parse::parse`), so `$\sum_{i=1}^{n}$` becomes `∑ᵢ₌₁ⁿ` (no underscores) before the parser sees it. Fenced + inline code are protected; a mathy-content heuristic (`\`, `^`, `_`, `{`) leaves `$5`/`$10` currency literal. Verified e2e: `∑ᵢ₌₁ⁿ xᵢ²`, `α ≤ β`, currency intact, `` `$x_i$` `` untouched.
+- **12 math tests**; **213 total green**, snapshots unchanged, fmt + clippy clean, reinstalled. Attribution note in `vendor/NOTICE` (original impl, standard Unicode mappings).
+
+**Next ports:** JSON viewer (`glance data.json` → colored/indented via our paint model, `.json` feature-detect in lib) and mermaid box-art (simplest fenced `mermaid` flowcharts). **Then STOP** — the rest of Phase 5 is launch (crates.io/Homebrew/cargo-dist/GIFs/Show HN), which is outward-facing and needs the user.
+
+---
+
 ## 2026-07-22 — Phase 4: slide mode + HTML export → **PHASE 4 COMPLETE** · JAY-94
 **Phase:** 4 (✅) · **Focus:** differentiators · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

@@ -63,3 +63,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+--- glance ports (Phase 5) ---
+src/md/math.rs (LaTeX→Unicode inline math) is an original implementation using
+standard Unicode symbol mappings (Greek block, Mathematical Operators, super/
+subscript blocks). The symbol correspondences are common knowledge; no third-
+party code was copied.

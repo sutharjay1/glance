@@ -90,8 +90,11 @@ pub fn parse(input: &str) -> Document {
     opts.insert(Options::ENABLE_TASKLISTS);
     opts.insert(Options::ENABLE_FOOTNOTES);
 
+    // Pre-render inline `$…$` math to Unicode before parsing, so subscript underscores aren't
+    // mistaken for markdown emphasis (code spans/blocks are protected).
+    let input = crate::md::math::preprocess_math(input);
     let mut b = Builder::default();
-    for ev in Parser::new_ext(input, opts) {
+    for ev in Parser::new_ext(&input, opts) {
         b.event(ev);
     }
     Document {
