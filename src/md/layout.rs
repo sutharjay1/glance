@@ -154,6 +154,10 @@ fn prefixed(lines: Vec<Line>, first: &Span, cont: &Span) -> Vec<Line> {
 
 enum Tok {
     Word(Span),
+    /// A whitespace boundary between words. Consecutive spaces collapse; a space at a line
+    /// start or wrap point is dropped. Preserving these (vs. re-joining split words) keeps
+    /// punctuation glued to inline elements — `code`, not `code ,`.
+    Space,
     HardBreak,
 }
 
@@ -168,23 +172,43 @@ fn wrap_inlines(inlines: &[Inline], base: Style, w: usize, first: &Span, cont: &
     let mut cur: Vec<Span> = Vec::new();
     let mut cur_w = 0usize;
 
+    let mut pending_space = false;
     for tok in toks {
         match tok {
+            Tok::Space => pending_space = true,
             Tok::HardBreak => {
                 lines.push(std::mem::take(&mut cur));
                 cur_w = 0;
+                pending_space = false;
             }
             Tok::Word(sp) => {
                 let ww = width(&sp.text);
+                let need_space = pending_space && cur_w > 0;
+                pending_space = false;
+                let add = if need_space { 1 + ww } else { ww };
                 if cur_w == 0 {
                     cur.push(sp);
                     cur_w = ww;
-                } else if cur_w + 1 + ww <= avail {
-                    cur.push(Span::plain(" "));
+                } else if cur_w + add <= avail {
+                    if need_space {
+                        // A space *between two words of the same link* carries that link's href,
+                        // so paint keeps the whole link as one OSC 8 run; boundary spaces don't.
+                        let prev_href = cur.last().and_then(|s| s.href.clone());
+                        let sp_href = if prev_href == sp.href {
+                            sp.href.clone()
+                        } else {
+                            None
+                        };
+                        cur.push(Span {
+                            text: " ".to_string(),
+                            style: Style::default(),
+                            href: sp_href,
+                        });
+                    }
                     cur.push(sp);
-                    cur_w += 1 + ww;
+                    cur_w += add;
                 } else {
-                    lines.push(std::mem::take(&mut cur));
+                    lines.push(std::mem::take(&mut cur)); // the space becomes the line break
                     cur.push(sp);
                     cur_w = ww;
                 }
@@ -214,16 +238,18 @@ fn wrap_inlines(inlines: &[Inline], base: Style, w: usize, first: &Span, cont: &
 fn flatten(inlines: &[Inline], style: Style, href: Option<&str>, out: &mut Vec<Tok>) {
     for inl in inlines {
         match inl {
-            Inline::Text(s) => push_words(s, style, href, out),
-            Inline::Code(s) => push_words(s, style.with_code(), href, out),
+            Inline::Text(s) => emit_text(s, style, href, out),
+            Inline::Code(s) => emit_text(s, style.with_code(), href, out),
             Inline::Emph(v) => flatten(v, with(style, |s| s.italic = true), href, out),
             Inline::Strong(v) => flatten(v, with(style, |s| s.bold = true), href, out),
             Inline::Strike(v) => flatten(v, with(style, |s| s.strike = true), href, out),
             Inline::Link { url, inlines } => flatten(inlines, style, Some(url), out),
-            Inline::Image { alt, .. } => {
-                push_words(&format!("[{alt}]"), Style::role(Role::Dim), href, out)
-            }
-            Inline::SoftBreak => {} // words are already separated; nothing to emit
+            Inline::Image { alt, .. } => out.push(Tok::Word(Span {
+                text: format!("[{alt}]"),
+                style: Style::role(Role::Dim),
+                href: href.map(str::to_string),
+            })),
+            Inline::SoftBreak => out.push(Tok::Space),
             Inline::HardBreak => out.push(Tok::HardBreak),
         }
     }
@@ -234,14 +260,40 @@ fn with(mut style: Style, f: impl FnOnce(&mut Style)) -> Style {
     style
 }
 
-fn push_words(s: &str, style: Style, href: Option<&str>, out: &mut Vec<Tok>) {
-    for word in s.split_whitespace() {
+/// Emit a styled text run as `Word`/`Space` tokens, preserving leading/trailing/inter-word
+/// whitespace boundaries so words glue or separate exactly as the source intended.
+fn emit_text(s: &str, style: Style, href: Option<&str>, out: &mut Vec<Tok>) {
+    let words: Vec<&str> = s.split_whitespace().collect();
+    if words.is_empty() {
+        if !s.is_empty() {
+            out.push(Tok::Space); // all-whitespace run is a single boundary
+        }
+        return;
+    }
+    if starts_ws(s) {
+        out.push(Tok::Space);
+    }
+    for (k, word) in words.iter().enumerate() {
+        if k > 0 {
+            out.push(Tok::Space);
+        }
         out.push(Tok::Word(Span {
-            text: word.to_string(),
+            text: (*word).to_string(),
             style,
             href: href.map(str::to_string),
         }));
     }
+    if ends_ws(s) {
+        out.push(Tok::Space);
+    }
+}
+
+fn starts_ws(s: &str) -> bool {
+    s.starts_with(|c: char| c.is_whitespace())
+}
+
+fn ends_ws(s: &str) -> bool {
+    s.ends_with(|c: char| c.is_whitespace())
 }
 
 /// Truncate `s` to at most `w` display cells (for no-wrap code lines).
@@ -307,6 +359,14 @@ mod tests {
             joined.split_whitespace().collect::<Vec<_>>(),
             md.split_whitespace().collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn punctuation_glues_to_inline_elements() {
+        // Regression: word-splitting must not fabricate a space before punctuation that
+        // directly follows an inline element (`code`, not `code ,`).
+        let lines = layout_doc("use `code`, then **stop**.", 80);
+        assert_eq!(lines[0].plain_text(), "use code, then stop.");
     }
 
     #[test]

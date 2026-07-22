@@ -6,9 +6,14 @@
 //! `docs/adr/` for the decisions behind this structure.
 
 pub mod md;
+pub mod paint;
 pub mod style;
 pub mod term;
 pub mod text;
+pub mod theme;
+
+use std::io::IsTerminal;
+use term::caps::{Capabilities, ColorDepth};
 
 /// Crate version, from `Cargo.toml`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -34,8 +39,10 @@ OPTIONS:
 
 /// Run glance with the given CLI args (excluding `argv[0]`). Returns a process exit code.
 ///
-/// Phase 0.5 scaffold: only `-V/--version` and `-h/--help` are wired. The viewer core
-/// (arg parsing, parse → layout → render) lands in Phase 1 (JAY-91).
+/// Phase 1, in progress: `-V/-h` plus a provisional **pipe render** — a file argument is
+/// parsed → laid out → painted to stdout. When stdout is a TTY it uses detected color depth;
+/// piped/`--no-color` output is clean plain text. The interactive TUI (event loop, viewport,
+/// navigation) is a later module (JAY-91).
 pub fn run(args: &[String]) -> i32 {
     if args.iter().any(|a| a == "-V" || a == "--version") {
         println!("glance {VERSION}");
@@ -45,8 +52,47 @@ pub fn run(args: &[String]) -> i32 {
         print!("{HELP}");
         return 0;
     }
-    eprintln!("glance {VERSION}: viewer core not yet implemented (Phase 1 / JAY-91). Try --help.");
+
+    let no_color = args.iter().any(|a| a == "--no-color");
+    let theme_name = flag_value(args, "-T", "--theme").unwrap_or("dark");
+    let theme = theme::by_name(theme_name);
+
+    let Some(path) = args.iter().find(|a| !a.starts_with('-')) else {
+        eprintln!("glance {VERSION}: no input file. Try --help.");
+        return 0;
+    };
+
+    let input = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("glance: {path}: {e}");
+            return 1;
+        }
+    };
+
+    let is_tty = std::io::stdout().is_terminal();
+    let depth = if no_color || !is_tty {
+        ColorDepth::None
+    } else {
+        Capabilities::from_env(false).color
+    };
+    // OSC 8 only when interactive; piped output stays clean.
+    let hyperlinks = is_tty && !no_color;
+    let width = 80;
+
+    print!(
+        "{}",
+        paint::render_document(&input, width, &theme, depth, hyperlinks)
+    );
     0
+}
+
+/// Read the value of a `-x`/`--long` flag (space-separated form), if present.
+fn flag_value<'a>(args: &'a [String], short: &str, long: &str) -> Option<&'a str> {
+    args.iter()
+        .position(|a| a == short || a == long)
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str)
 }
 
 #[cfg(test)]

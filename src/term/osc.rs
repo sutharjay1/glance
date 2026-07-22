@@ -22,8 +22,17 @@ pub const OSC52_MAX_ENCODED: usize = 100_000;
 
 /// OSC 8 hyperlink: render `text` as a clickable link to `url`.
 pub fn hyperlink(url: &str, text: &str) -> String {
-    format!("\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\")
+    format!("{}{text}{LINK_CLOSE}", link_open(url))
 }
+
+/// Open an OSC 8 hyperlink run (paired with [`LINK_CLOSE`]); used by `paint` to group a whole
+/// link run under one sequence rather than per word.
+pub fn link_open(url: &str) -> String {
+    format!("\x1b]8;;{url}\x1b\\")
+}
+
+/// Close an OSC 8 hyperlink run.
+pub const LINK_CLOSE: &str = "\x1b]8;;\x1b\\";
 
 fn osc52(encoded: &str) -> String {
     format!("\x1b]52;c;{encoded}\x1b\\")
