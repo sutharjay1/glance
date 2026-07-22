@@ -9,6 +9,7 @@ pub mod cli;
 pub mod config;
 pub mod fuzzy;
 pub mod md;
+pub mod open;
 pub mod paint;
 pub mod style;
 pub mod term;
@@ -110,7 +111,8 @@ pub fn run(args: &[String]) -> i32 {
             Capabilities::from_env(false).color
         };
         let blocks = md::parse::parse(&input).blocks;
-        return match view::app::run(blocks, theme, depth, true, width_override) {
+        let file = Some(std::path::PathBuf::from(path));
+        return match view::app::run(blocks, theme, depth, true, width_override, file) {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("glance: {e}");

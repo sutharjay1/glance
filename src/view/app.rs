@@ -18,22 +18,44 @@ use crossterm::terminal::{
 };
 use crossterm::{execute, queue};
 
+use std::path::PathBuf;
+
+use crate::md::layout::LinkRef;
 use crate::md::parse::Block;
+use crate::open::{self, classify, LinkTarget};
 use crate::paint::paint;
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key};
 use crate::theme::Theme;
-use crate::view::overlays::{Fuzzy, Toc};
+use crate::view::overlays::{Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
 
-/// Input mode of the viewer: `/` search prompt, `o` TOC overlay, `:` fuzzy heading filter, or
+/// Input mode of the viewer: `/` search prompt, `o` TOC, `:` fuzzy filter, `f` link picker, or
 /// normal document navigation.
 enum Mode {
     Normal,
     Search(String),
     Toc(Toc),
     Fuzzy(Fuzzy),
+    Links(Links),
+}
+
+/// Act on a chosen link: open web/other URLs externally; follow local markdown in-app, open other
+/// local files externally. Errors are swallowed (a missing opener must not crash the viewer).
+fn follow_link(state: &mut ViewerState, link: &LinkRef) {
+    match classify(&link.url, state.current_dir().as_deref()) {
+        LinkTarget::Url(u) | LinkTarget::Other(u) => {
+            let _ = open::open_url(&u);
+        }
+        LinkTarget::LocalFile(p) => {
+            if open::is_markdown(&p) {
+                let _ = state.load(p);
+            } else {
+                let _ = open::open_url(&p.to_string_lossy());
+            }
+        }
+    }
 }
 
 /// RAII terminal setup/teardown. Enter on construction, restore on drop.
@@ -83,13 +105,14 @@ pub fn run(
     depth: ColorDepth,
     hyperlinks: bool,
     width_override: Option<usize>,
+    path: Option<PathBuf>,
 ) -> io::Result<()> {
     install_panic_hook();
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let width = width_override
         .filter(|&w| w > 0)
         .map_or(cols as usize, |w| w.min(cols as usize));
-    let mut state = ViewerState::new(blocks, width, rows as usize);
+    let mut state = ViewerState::new(blocks, width, rows as usize, path);
 
     let _guard = TerminalGuard::enter()?;
     let mut out = io::stdout();
@@ -131,6 +154,13 @@ pub fn run(
                         Key::Char(':') => {
                             if !state.doc.headings.is_empty() {
                                 mode = Mode::Fuzzy(Fuzzy::new(&state.doc.headings));
+                                full = true;
+                            }
+                        }
+                        Key::Char('f') => {
+                            let links = Links::new(&state.doc.links);
+                            if !links.is_empty() {
+                                mode = Mode::Links(links);
                                 full = true;
                             }
                         }
@@ -206,6 +236,35 @@ pub fn run(
                             _ => mode = Mode::Fuzzy(f),
                         }
                     }
+                    // Link picker: digits open directly; arrows move, Enter opens the selection.
+                    Mode::Links(mut links) => {
+                        full = true;
+                        match k {
+                            Key::Char(c) if c.is_ascii_digit() && c != '0' => {
+                                let idx = (c as u8 - b'1') as usize;
+                                if let Some(link) = links.at(idx).cloned() {
+                                    follow_link(&mut state, &link); // opens, then closes
+                                } else {
+                                    mode = Mode::Links(links);
+                                }
+                            }
+                            Key::Char('j') | Key::Down => {
+                                links.down();
+                                mode = Mode::Links(links);
+                            }
+                            Key::Char('k') | Key::Up => {
+                                links.up();
+                                mode = Mode::Links(links);
+                            }
+                            Key::Enter => {
+                                if let Some(link) = links.selected().cloned() {
+                                    follow_link(&mut state, &link);
+                                }
+                            }
+                            Key::Esc | Key::Char('f') | Key::Char('q') => {} // close
+                            _ => mode = Mode::Links(links),
+                        }
+                    }
                 }
                 draw(
                     &mut out, &state, &theme, depth, hyperlinks, &mut prev, full, &mode,
@@ -232,6 +291,7 @@ fn draw(
     let overlay = match mode {
         Mode::Toc(toc) => Some(toc.view(state.width, state.height)),
         Mode::Fuzzy(f) => Some(f.view(state.width, state.height)),
+        Mode::Links(l) => Some(l.view(state.width, state.height)),
         _ => None,
     };
     let mut frame = match overlay {
@@ -287,6 +347,11 @@ fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
                 f.count()
             )
         }),
+        Mode::Links(l) => Some(format!(
+            "Links  {}/{}  · digits/↑↓ open · Enter · Esc",
+            l.selected_index() + 1,
+            l.len()
+        )),
         Mode::Normal => state.search.as_ref().map(|s| {
             if s.is_empty() {
                 format!("/{}  no matches", s.query)

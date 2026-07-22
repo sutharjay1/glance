@@ -6,8 +6,10 @@
 //! this free of terminal I/O makes the whole navigation surface unit-testable; `view::app`
 //! supplies the real event source and calls `view::render`.
 
+use std::path::PathBuf;
+
 use crate::md::layout::{layout_document, DocLayout};
-use crate::md::parse::Block;
+use crate::md::parse::{parse, Block};
 use crate::term::input::{Key, Mouse};
 use crate::view::search::Search;
 
@@ -35,10 +37,14 @@ pub struct ViewerState {
     pub height: usize,
     /// Active in-document search, if any (drives `n`/`N`, highlighting, and the status readout).
     pub search: Option<Search>,
+    /// Path of the current file (for resolving relative links and `p` copy-path); `None` for stdin.
+    path: Option<PathBuf>,
+    /// Back-navigation stack of `(path, scroll)` for following and returning from local links.
+    history: Vec<(PathBuf, usize)>,
 }
 
 impl ViewerState {
-    pub fn new(blocks: Vec<Block>, width: usize, height: usize) -> Self {
+    pub fn new(blocks: Vec<Block>, width: usize, height: usize, path: Option<PathBuf>) -> Self {
         let doc = layout_document(&blocks, width);
         ViewerState {
             blocks,
@@ -47,7 +53,51 @@ impl ViewerState {
             width,
             height,
             search: None,
+            path,
+            history: Vec::new(),
         }
+    }
+
+    /// The directory of the current file, for resolving relative links.
+    pub fn current_dir(&self) -> Option<PathBuf> {
+        self.path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(std::path::Path::to_path_buf)
+    }
+
+    /// Load `path` as the new document, pushing the current file+scroll onto the back stack.
+    pub fn load(&mut self, path: PathBuf) -> std::io::Result<()> {
+        let input = std::fs::read_to_string(&path)?;
+        if let Some(cur) = self.path.take() {
+            self.history.push((cur, self.top));
+        }
+        self.blocks = parse(&input).blocks;
+        self.doc = layout_document(&self.blocks, self.width);
+        self.top = 0;
+        self.search = None;
+        self.path = Some(path);
+        Ok(())
+    }
+
+    /// Return to the previously viewed file (restoring its scroll). Returns false at the root.
+    pub fn back(&mut self) -> bool {
+        let Some((path, top)) = self.history.pop() else {
+            return false;
+        };
+        let Ok(input) = std::fs::read_to_string(&path) else {
+            return false;
+        };
+        self.blocks = parse(&input).blocks;
+        self.doc = layout_document(&self.blocks, self.width);
+        self.path = Some(path);
+        self.search = None;
+        self.top = top.min(self.max_top());
+        true
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        !self.history.is_empty()
     }
 
     /// The largest valid `top` — keeps the last screenful on screen.
@@ -161,6 +211,9 @@ impl ViewerState {
             Key::Char('n') if self.search.is_some() => self.search_next(),
             Key::Char('N') if self.search.is_some() => self.search_prev(),
             Key::Esc if self.search.is_some() => self.clear_search(),
+            Key::Backspace if self.can_go_back() => {
+                self.back();
+            }
             Key::Char('q') | Key::Ctrl('c') => return Action::Quit,
             _ => return Action::Ignore,
         }
@@ -184,7 +237,7 @@ mod tests {
     use crate::md::parse::parse;
 
     fn state(md: &str, width: usize, height: usize) -> ViewerState {
-        ViewerState::new(parse(md).blocks, width, height)
+        ViewerState::new(parse(md).blocks, width, height, None)
     }
 
     /// A document with `n` short paragraphs → at least `n` lines.

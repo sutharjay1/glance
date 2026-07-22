@@ -6,7 +6,7 @@
 //! document. This keeps selection/rendering unit-testable without a terminal.
 
 use crate::fuzzy;
-use crate::md::layout::Heading;
+use crate::md::layout::{Heading, LinkRef};
 use crate::style::{Line, Span, Style};
 
 /// Render `headings[order]` as depth-indented styled lines, the row at `selected` reverse-
@@ -185,6 +185,79 @@ impl Fuzzy {
     }
 }
 
+/// The link picker (`f`): a numbered list of the document's links; Enter opens/follows one.
+pub struct Links {
+    links: Vec<LinkRef>,
+    selected: usize,
+}
+
+impl Links {
+    pub fn new(links: &[LinkRef]) -> Self {
+        Links {
+            links: links.to_vec(),
+            selected: 0,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.links.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.links.len()
+    }
+
+    pub fn selected_index(&self) -> usize {
+        self.selected
+    }
+
+    pub fn up(&mut self) {
+        self.selected = self.selected.saturating_sub(1);
+    }
+
+    pub fn down(&mut self) {
+        if self.selected + 1 < self.links.len() {
+            self.selected += 1;
+        }
+    }
+
+    pub fn selected(&self) -> Option<&LinkRef> {
+        self.links.get(self.selected)
+    }
+
+    pub fn at(&self, i: usize) -> Option<&LinkRef> {
+        self.links.get(i)
+    }
+
+    pub fn lines(&self, width: usize) -> Vec<Line> {
+        self.links
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                let mut text = format!("{:>2}. {}  →  {}", i + 1, l.text, l.url);
+                if i == self.selected {
+                    let w = crate::text::width(&text);
+                    if w < width {
+                        text.push_str(&" ".repeat(width - w));
+                    }
+                }
+                let style = Style {
+                    highlight: i == self.selected,
+                    ..Default::default()
+                };
+                Line {
+                    spans: vec![Span::new(text, style)],
+                    no_wrap: true,
+                }
+            })
+            .collect()
+    }
+
+    pub fn view(&self, width: usize, height: usize) -> Vec<Line> {
+        window(self.lines(width), self.selected, height)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +360,20 @@ mod tests {
         f.pop();
         f.pop();
         assert_eq!(f.count(), 2); // empty query → all again
+    }
+
+    #[test]
+    fn links_picker_lists_and_selects() {
+        let doc = layout_document(
+            &parse("see [docs](https://x.io) and [more](./b.md)").blocks,
+            80,
+        );
+        let mut l = Links::new(&doc.links);
+        assert_eq!(l.len(), 2);
+        assert_eq!(l.selected().unwrap().url, "https://x.io");
+        l.down();
+        assert_eq!(l.selected().unwrap().url, "./b.md");
+        l.down(); // clamp at end
+        assert_eq!(l.selected_index(), 1);
     }
 }
