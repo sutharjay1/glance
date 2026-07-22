@@ -1,0 +1,31 @@
+[package]
+name = "glance"
+version = "0.0.0"
+edition = "2021"
+description = "A fast terminal markdown viewer that renders your LLM's output live"
+license = "MIT"
+repository = "https://github.com/sutharjay/glance"
+
+[[bin]]
+name = "glance"
+path = "src/main.rs"
+
+[lib]
+name = "glance"
+path = "src/lib.rs"
+
+[dependencies]
+# Added incrementally per phase to keep first-build fast (see ROADMAP Phase 0.5 note).
+# Phase 1 will add: pulldown-cmark, crossterm, syntect (Phase 3), ...
+unicode-width = "0.2"
+
+[dev-dependencies]
+# Phase 1+: insta (snapshots), expectrl (PTY)
+
+# Smallest, fastest binary (ADR 0004): ~3-6 MB target vs mdterm's 9.7 MB.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+opt-level = 3

@@ -20,10 +20,11 @@ Ground the README comparison table and de-risk the vendored modules.
 - ✅ Copied reference `test.md` → `tests/fixtures/` (+ generated `big-5k.md`).
 **Exit:** ✅ benchmarks recorded; parity notes captured; vendor survey + NOTICE drafted; fixtures committed.
 
-## Phase 0.5 — scaffold  ⬜
-- ⬜ `cargo init --bin`; deps; release profile (`lto`, `codegen-units=1`, `strip`, `panic=abort`)
-- ⬜ CI (fmt, clippy, test, insta, PTY); matrix ubuntu+macos gating, windows non-gating
-- ⬜ `cargo-dist` release config
+## Phase 0.5 — scaffold  ✅ (2026-07-22)
+- ✅ `cargo init --bin` + `lib.rs`/thin `main.rs` split (logic testable without spawning); release profile (`lto`, `codegen-units=1`, `strip`, `panic=abort`) → 295 KB scaffold binary
+- ✅ First TDD unit: `text::width` ASCII fast path (plan §8 hotspot) — 7 tests green, fmt+clippy clean
+- ✅ CI (`.github/workflows/ci.yml`): fmt/clippy/test, ubuntu+macos gating, windows non-gating (insta/PTY wired in Phase 1)
+- ◐ Deps added incrementally per phase (unicode-width now) to keep builds fast; `cargo-dist` config deferred to Phase 5 (launch)
 
 ## Phase 1 — viewer core (week 1–2)  ⬜  ← risky foundation
 Term layer → parse → layout → paint → render → navigation → pipe mode → config.
