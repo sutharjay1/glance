@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use crate::md::layout::{layout_document, DocLayout};
+use crate::md::layout::{layout_document_with, DocLayout, ResolvedImages};
 use crate::md::parse::{parse, Block};
 use crate::term::input::{Key, Mouse};
 use crate::view::search::Search;
@@ -45,6 +45,9 @@ pub struct ViewerState {
     toast: Option<String>,
     /// Whether code blocks show a line-number gutter (`l` toggles; `-l`/config seed it).
     line_numbers: bool,
+    /// Images the background worker has fetched + rendered (ordinal → rows). Re-applied on every
+    /// layout; cleared when the doc or width changes (the render is width-specific).
+    resolved_images: ResolvedImages,
 }
 
 impl ViewerState {
@@ -55,7 +58,8 @@ impl ViewerState {
         path: Option<PathBuf>,
         line_numbers: bool,
     ) -> Self {
-        let doc = layout_document(&blocks, width, line_numbers);
+        let resolved_images = ResolvedImages::new();
+        let doc = layout_document_with(&blocks, width, line_numbers, &resolved_images);
         ViewerState {
             blocks,
             doc,
@@ -67,14 +71,66 @@ impl ViewerState {
             history: Vec::new(),
             toast: None,
             line_numbers,
+            resolved_images,
         }
     }
 
-    /// Toggle the code line-number gutter and re-lay-out (it changes code width).
+    /// Number of standalone images in the current document (for the image worker to enqueue).
+    pub fn image_count(&self) -> usize {
+        self.doc.images.len()
+    }
+
+    /// The `(url, alt)` of image `idx`, if present.
+    pub fn image_at(&self, idx: usize) -> Option<(String, String)> {
+        self.doc
+            .images
+            .get(idx)
+            .map(|im| (im.url.clone(), im.alt.clone()))
+    }
+
+    /// Whether image `idx` intersects the viewport (for prioritizing + gating repaints).
+    pub fn image_visible(&self, idx: usize) -> bool {
+        self.doc
+            .images
+            .get(idx)
+            .is_some_and(|im| im.start < self.top + self.height && im.end > self.top)
+    }
+
+    /// Apply a background-rendered image (ordinal → rows) and re-layout so the placeholder expands
+    /// to the image's full height, preserving scroll. Returns whether the image is on screen.
+    pub fn set_resolved_image(&mut self, idx: usize, lines: Vec<crate::style::Line>) -> bool {
+        self.resolved_images.insert(idx, lines);
+        self.relayout();
+        self.image_visible(idx)
+    }
+
+    /// Rebuild the layout from the current blocks + resolved images, clamping scroll and re-running
+    /// any active search (used after an image resolves).
+    fn relayout(&mut self) {
+        let anchor = self.top;
+        self.doc = layout_document_with(
+            &self.blocks,
+            self.width,
+            self.line_numbers,
+            &self.resolved_images,
+        );
+        self.top = anchor.min(self.max_top());
+        if let Some(s) = &self.search {
+            self.search = Some(Search::new(&s.query, &self.doc.text));
+        }
+    }
+
+    /// Toggle the code line-number gutter and re-lay-out (it changes code width). Resolved images
+    /// are kept — the gutter doesn't affect image width.
     pub fn toggle_line_numbers(&mut self) {
         self.line_numbers = !self.line_numbers;
         let top = self.top;
-        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
+        self.doc = layout_document_with(
+            &self.blocks,
+            self.width,
+            self.line_numbers,
+            &self.resolved_images,
+        );
         self.top = top.min(self.max_top());
     }
 
@@ -183,7 +239,13 @@ impl ViewerState {
             self.history.push((cur, self.top));
         }
         self.blocks = parse(&input).blocks;
-        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
+        self.resolved_images.clear(); // new/changed doc → prior renders are stale
+        self.doc = layout_document_with(
+            &self.blocks,
+            self.width,
+            self.line_numbers,
+            &self.resolved_images,
+        );
         self.top = 0;
         self.search = None;
         self.path = Some(path);
@@ -199,7 +261,13 @@ impl ViewerState {
             return false;
         };
         self.blocks = parse(&input).blocks;
-        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
+        self.resolved_images.clear(); // new/changed doc → prior renders are stale
+        self.doc = layout_document_with(
+            &self.blocks,
+            self.width,
+            self.line_numbers,
+            &self.resolved_images,
+        );
         self.path = Some(path);
         self.search = None;
         self.top = top.min(self.max_top());
@@ -233,7 +301,13 @@ impl ViewerState {
         }
         let anchor = self.top;
         self.blocks = parse(&input).blocks;
-        self.doc = layout_document(&self.blocks, self.width, self.line_numbers);
+        self.resolved_images.clear(); // new/changed doc → prior renders are stale
+        self.doc = layout_document_with(
+            &self.blocks,
+            self.width,
+            self.line_numbers,
+            &self.resolved_images,
+        );
         self.top = anchor.min(self.max_top());
         if let Some(s) = &self.search {
             self.search = Some(Search::new(&s.query, &self.doc.text));
@@ -327,7 +401,13 @@ impl ViewerState {
         let anchor = self.top;
         self.width = width;
         self.height = height;
-        self.doc = layout_document(&self.blocks, width, self.line_numbers);
+        self.resolved_images.clear(); // renders are width-specific → re-fetch at the new width
+        self.doc = layout_document_with(
+            &self.blocks,
+            width,
+            self.line_numbers,
+            &self.resolved_images,
+        );
         self.top = anchor.min(self.max_top());
         if let Some(s) = &self.search {
             self.search = Some(Search::new(&s.query, &self.doc.text));

@@ -31,6 +31,7 @@ use crate::term::input::{map_event, Event, Key, Mouse};
 use crate::theme::{self, Theme};
 use crate::view::copy;
 use crate::view::highlighter::{blocks_by_priority, HighlightRequest, Highlighter};
+use crate::view::images::{ImageLoader, ImageRequest};
 use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
@@ -65,6 +66,39 @@ fn enqueue_tab(
                 width,
                 line_numbers,
             });
+        }
+    }
+}
+
+/// Key into the requested-images set: (tab, image index, cols). Cols-keyed so a resize re-fetches
+/// at the new width (and stale-width in-flight results are dropped on arrival).
+type ImgKey = (usize, usize, usize);
+
+/// Post fetch/render requests for `state`'s images (visible first), skipping already-requested.
+fn enqueue_images(
+    loader: &ImageLoader,
+    requested: &mut HashSet<ImgKey>,
+    tab_idx: usize,
+    state: &ViewerState,
+) {
+    let cols = state.width;
+    let doc_dir = state.current_dir();
+    let n = state.image_count();
+    // Visible images first, then the rest (both in document order).
+    let order = (0..n)
+        .filter(|&i| state.image_visible(i))
+        .chain((0..n).filter(|&i| !state.image_visible(i)));
+    for idx in order {
+        if let Some((url, _alt)) = state.image_at(idx) {
+            if requested.insert((tab_idx, idx, cols)) {
+                loader.request(ImageRequest {
+                    tab: tab_idx,
+                    index: idx,
+                    url,
+                    doc_dir: doc_dir.clone(),
+                    cols,
+                });
+            }
         }
     }
 }
@@ -213,6 +247,20 @@ pub fn run(
         tabs.active(),
     );
 
+    // Background image fetch/decode/render. Only meaningful with color; in `None` the placeholders
+    // stay. Enqueued the same way (visible first) and applied by re-layout when each resolves.
+    let images = depth != ColorDepth::None;
+    let image_loader = ImageLoader::spawn();
+    let mut requested_images: HashSet<ImgKey> = HashSet::new();
+    if images {
+        enqueue_images(
+            &image_loader,
+            &mut requested_images,
+            tabs.active_index(),
+            tabs.active(),
+        );
+    }
+
     loop {
         // Fold in filesystem events, then reload any file that has gone quiet.
         if let Some(w) = &watcher {
@@ -226,14 +274,23 @@ pub fn run(
                     redraw |= tabs.reload_path(&p);
                 }
                 if redraw {
-                    // The doc changed → its highlights are stale; re-enqueue at current geometry.
+                    // The doc changed → its highlights + images are stale; re-enqueue.
                     requested.clear();
+                    requested_images.clear();
                     enqueue_tab(
                         &highlighter,
                         &mut requested,
                         tabs.active_index(),
                         tabs.active(),
                     );
+                    if images {
+                        enqueue_images(
+                            &image_loader,
+                            &mut requested_images,
+                            tabs.active_index(),
+                            tabs.active(),
+                        );
+                    }
                     tabs.active_mut().set_toast("reloaded");
                     draw(
                         &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
@@ -262,7 +319,26 @@ pub fn run(
             )?;
         }
 
-        // Always poll (never block): both the watcher and the highlight worker deliver events
+        // Apply finished images: each resolve re-lays-out the tab (placeholder → N rows), so a
+        // visible one needs a full repaint. Stale-width results are dropped by the cols check.
+        let mut img_repaint = false;
+        for res in image_loader.drain() {
+            if let Some(tab) = tabs.get_mut(res.tab) {
+                if tab.width == res.cols {
+                    let visible = tab.set_resolved_image(res.index, res.lines);
+                    if res.tab == active && visible {
+                        img_repaint = true;
+                    }
+                }
+            }
+        }
+        if img_repaint {
+            draw(
+                &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
+            )?;
+        }
+
+        // Always poll (never block): the watcher, highlight, and image workers all deliver events
         // that must be serviced while the user is idle.
         if !event::poll(POLL_TICK)? {
             continue;
@@ -270,7 +346,7 @@ pub fn run(
         match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
                 tabs.resize_all(cols as usize, rows as usize);
-                // Width changed → prior highlights are the wrong geometry; re-request.
+                // Width changed → prior highlights + image renders are the wrong geometry.
                 requested.clear();
                 enqueue_tab(
                     &highlighter,
@@ -278,6 +354,14 @@ pub fn run(
                     tabs.active_index(),
                     tabs.active(),
                 );
+                if images {
+                    enqueue_images(
+                        &image_loader,
+                        &mut requested_images,
+                        tabs.active_index(),
+                        tabs.active(),
+                    );
+                }
                 draw(
                     &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
                 )?;
@@ -309,13 +393,21 @@ pub fn run(
                 } else {
                     tabs.prev();
                 }
-                // Newly-active tab hasn't been highlighted yet — enqueue its blocks.
+                // Newly-active tab hasn't been highlighted / imaged yet — enqueue its blocks.
                 enqueue_tab(
                     &highlighter,
                     &mut requested,
                     tabs.active_index(),
                     tabs.active(),
                 );
+                if images {
+                    enqueue_images(
+                        &image_loader,
+                        &mut requested_images,
+                        tabs.active_index(),
+                        tabs.active(),
+                    );
+                }
                 draw(
                     &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
                 )?;

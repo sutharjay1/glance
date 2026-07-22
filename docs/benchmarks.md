@@ -15,13 +15,16 @@ phases land.
 | mdterm (release, unoptimized profile) | 9.0 MB |
 | **glance** — Phase 1 scaffold (LTO + `codegen-units=1` + strip + panic=abort) | 831 KB |
 | **glance** — Phase 2 complete (adds regex/notify/toml/serde) | ~2.0 MB |
-| **glance** — Phase 3 with syntect wired (fancy-regex, parsing-only, no themes) | **2.6 MB** |
+| **glance** — Phase 3 with syntect wired (fancy-regex, parsing-only, no themes) | 2.6 MB |
+| **glance** — Phase 3 complete (+ image decode + rustls for remote images, [ADR 0006](adr/0006-bundle-tls-for-remote-images.md)) | **4.1 MB** |
 
-glance is **~3.6× smaller** than mdterm even with syntect's 75-language highlighter linked —
-and far under a Bun-compiled binary (60–90 MB), validating the Rust decision (ADR 0001). Note
-syntect adds only ~500 KB because its default syntax dump is flate2-compressed and embedded, and
-it is loaded lazily on a worker thread — **never on the first-paint path** (ADR 0004), so the
-size cost buys 75 languages without touching the startup latency the micro-tokenizer owns.
+glance is **~2.2× smaller** than mdterm with the full feature set — syntect's 75-language
+highlighter, image decode (png+jpeg), and a bundled TLS stack for remote images — and far under a
+Bun-compiled binary (60–90 MB), validating the Rust decision (ADR 0001). Every heavy feature is
+loaded/executed **off the first-paint path** (ADR 0004): syntect on a worker (+500 KB, its dump is
+flate2-compressed + embedded), image fetch/decode on a worker (+258 KB image, +1.2 MB rustls). So
+the size buys capability without touching the startup latency the micro-tokenizer + instant layout
+own — first paint stays **0.65 ms** (test.md) / **13 ms** (5k lines) regardless.
 
 ## Launch → render — head-to-head (2026-07-22, Apple M5 Pro)
 

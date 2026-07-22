@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 3: background image worker → **PHASE 3 COMPLETE** · JAY-93
+**Phase:** 3 (✅) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- New `view::images::ImageLoader` — the background fetch/decode/render worker (highlighter's producer/mpsc/drain shape). Worker: fetch (`ureq` for http/https with a 20 MB cap; `std::fs` for local, `file://`-stripped and relatives resolved against the doc dir) → `image::load_from_memory` → `half_block` at target cols → send lines. Pure/tested `is_remote` + `resolve_local` (4+ cases).
+- **The relayout wrinkle** (vs syntect's in-place patch): a rendered image is N rows from a 1-row placeholder, so `md::layout` gained `layout_document_with(blocks, w, ln, &ResolvedImages)` — a resolved image ordinal expands its placeholder to the rendered rows (indices recomputed; `ImageRef.end` grows). Tested: a fake 4-row resolve shifts the following heading down by 3. `ViewerState` holds a `resolved_images` map, `set_resolved_image(idx, lines)` inserts + relayouts (scroll clamped, search re-run), and clears it on resize/reload/nav (renders are width-specific).
+- `view::app`: spawns the loader after first paint (gated on color depth), enqueues images visible-first (cached by (tab,idx,cols) so scroll/resize don't re-fetch), drains results each tick → `set_resolved_image` + full repaint when a visible image lands. Re-enqueues on resize/tab-switch/reload. **first-paint never blocks on fetch/decode.**
+- Kitty *display* integration (raw passthrough + row reservation into the damage-diff renderer) is a documented fast-follow; the encoder (`kitty_png`) is done + tested. All images currently render via the universal half-block path (works in every color terminal, incl. Kitty).
+- **Checkpoints:** binary **4.21 MB** (exactly the ADR 0006 target; 2.2× < mdterm's 9 MB); first-paint **0.65 ms** (test.md) / **13.2 ms** (5k-line) — images off the hot path. **190 total green**, fmt + clippy clean, reinstalled.
+
+**PHASE 3 COMPLETE** — syntect (core + worker) + full image ladder. → Phase 4 (JAY-94): streaming stdin (the `llm | glance` live-render demo), slide mode, HTML export.
+
+---
+
 ## 2026-07-22 — Phase 3: Kitty renderer + image node detection · JAY-93
 **Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

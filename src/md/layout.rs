@@ -11,10 +11,17 @@
 //! upstream), and the `(block,width)` cache + viewport-first background layout (a full-doc
 //! layout is already cheap; scrolling just slices `lines`, so no cache is needed to scroll).
 
+use std::collections::HashMap;
+
 use crate::md::highlight;
 use crate::md::parse::{Block, CalloutKind, Inline, Item};
 use crate::style::{Line, Role, Span, Style};
 use crate::text::width;
+
+/// Images the background worker has already fetched + rendered, keyed by image ordinal (the index
+/// into [`DocLayout::images`]). Passed back into layout so a resolved placeholder expands to the
+/// image's full rendered rows.
+pub type ResolvedImages = HashMap<usize, Vec<Line>>;
 
 /// Lay out a slice of blocks at content width `w`, separated by blank lines.
 pub fn layout_blocks(blocks: &[Block], w: usize, line_numbers: bool) -> Vec<Line> {
@@ -92,6 +99,19 @@ impl DocLayout {
 /// blocks are indexed with their line positions; links are collected from every line's spans (so
 /// nested links are found too).
 pub fn layout_document(blocks: &[Block], w: usize, line_numbers: bool) -> DocLayout {
+    layout_document_with(blocks, w, line_numbers, &ResolvedImages::new())
+}
+
+/// Like [`layout_document`], but any standalone image whose ordinal is present in `resolved`
+/// expands to its already-rendered rows instead of a one-line placeholder — so the background image
+/// worker's result is applied by re-laying-out (the image's height is unknown until decoded, so it
+/// can't be patched in place like a code block).
+pub fn layout_document_with(
+    blocks: &[Block],
+    w: usize,
+    line_numbers: bool,
+    resolved: &ResolvedImages,
+) -> DocLayout {
     let mut lines: Vec<Line> = Vec::new();
     let mut headings = Vec::new();
     let mut code_blocks = Vec::new();
@@ -101,19 +121,23 @@ pub fn layout_document(blocks: &[Block], w: usize, line_numbers: bool) -> DocLay
             lines.push(Line::default());
         }
         let start = lines.len();
-        // A paragraph that is just `![alt](url)` becomes an image placeholder + an ImageRef the
-        // background worker later replaces; everything else lays out normally.
+        // A paragraph that is just `![alt](url)` becomes an image: its already-rendered rows if the
+        // worker has resolved it, else a one-line placeholder + an ImageRef to resolve later.
         let bl = match b {
             Block::Paragraph(inls) if standalone_image(inls).is_some() => {
                 let (url, alt) = standalone_image(inls).unwrap();
-                let ph = image_placeholder(&alt, &url, w);
+                let ord = images.len();
+                let rendered = match resolved.get(&ord) {
+                    Some(r) if !r.is_empty() => r.clone(),
+                    _ => image_placeholder(&alt, &url, w),
+                };
                 images.push(ImageRef {
                     start,
-                    end: start + ph.len(),
+                    end: start + rendered.len(),
                     url,
                     alt,
                 });
-                ph
+                rendered
             }
             _ => layout_block(b, w, line_numbers),
         };
@@ -629,6 +653,22 @@ mod tests {
         // An image mixed with real text stays in the paragraph flow (alt text), not an ImageRef.
         let doc = layout_document(&parse("see ![x](y.png) here").blocks, 80, false);
         assert!(doc.images.is_empty());
+    }
+
+    #[test]
+    fn resolved_image_expands_placeholder_and_shifts_indices() {
+        let blocks = parse("![a](a.png)\n\n## After").blocks;
+        // Baseline: 1-line placeholder, heading somewhere below it.
+        let base = layout_document(&blocks, 80, false);
+        assert_eq!(base.images[0].end - base.images[0].start, 1);
+        let heading_line_before = base.headings[0].line;
+
+        // Resolve image 0 to a fake 4-row render.
+        let mut resolved = ResolvedImages::new();
+        resolved.insert(0, vec![Line::default(); 4]);
+        let doc = layout_document_with(&blocks, 80, false, &resolved);
+        assert_eq!(doc.images[0].end - doc.images[0].start, 4); // placeholder → 4 rows
+        assert_eq!(doc.headings[0].line, heading_line_before + 3); // everything after shifts down
     }
 
     /// No line may exceed the width (the core wrap invariant).

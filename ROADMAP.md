@@ -43,9 +43,10 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 - ✅ help overlay (`h`/`?`) · ✅ theme toggle (`t`) · ✅ line numbers (`l`, gutter + `-l`/config) · ✅ tabs (`Tab`/`Shift+Tab`, per-file scroll, `[n/N name]` status) · ✅ auto-reload (`notify` + 120 ms debounce, preserves scroll + search) · ✅ OSC 11 auto-theme (bg query + DSR fence → luminance; `-T`/config overrides)
 **Exit:** parity on nav/copy/link UX; copy verified macOS, Linux X11+Wayland, SSH (interactive paths PTY-tested in a later pass).
 
-## Phase 3 — highlight + images (week 4)  🟨
-- ✅ syntect highlighter **core** (`md::syntect_hl`): parsing-only (no theme engine), scope→`Role` mapping, lazy `OnceLock` `SyntaxSet` **off the startup path** · ✅ background highlight worker (`view::highlighter`: thread + mpsc channels, visible-first via `blocks_by_priority`, patch code-block lines in place + repaint via the loop's poll) — 2.6 MB total (3.4× < mdterm), first-paint unchanged (3.7 ms test.md / 12.9 ms 5k-line, syntect off that path) · 🟨 image ladder: ✅ capability probe (`ImageProtocol` Kitty/HalfBlock/None) · ✅ half-block renderer (`term::images`, `▀` fg=top/bg=bottom pixel; `Style` gained explicit `fg`/`bg` RGB) · ✅ Kitty renderer (chunked base64 PNG APC sequence) · ✅ standalone-image detection (placeholder line + `ImageRef` in `DocLayout`) · ⬜ background fetch/decode/scale worker + relayout-on-ready (local + remote via rustls, [ADR 0006](docs/adr/0006-bundle-tls-for-remote-images.md))
-**Exit:** code-heavy + image-heavy docs still first-paint < 80 ms.
+## Phase 3 — highlight + images (week 4)  ✅
+- ✅ syntect highlighter **core** (`md::syntect_hl`, parsing-only, scope→`Role`, lazy `OnceLock` off the startup path) + ✅ background highlight worker (`view::highlighter`, visible-first, in-place patch)
+- ✅ image ladder: capability probe (`ImageProtocol`) · half-block renderer (`▀` fg/bg pixels; `Style` gained `fg`/`bg` RGB) · Kitty encoder (chunked base64 PNG APC) · standalone-image detection (`ImageRef`) · **background fetch/decode/render worker** (`view::images`: `ureq` http/https + fs local, decode, half-block, cached by (url,cols)) · **relayout-on-ready** (placeholder→N rows via `layout_document_with` + resolved-images map; scroll clamped). Kitty *display* integration (raw passthrough + row reservation) is a documented fast-follow — encoder is done+tested.
+**Exit met:** 4.1 MB total (2.2× < mdterm), first-paint **0.65 ms** / **13 ms** (5k-line) — all heavy work off the hot path.
 
 ## Phase 4 — differentiators (week 5)  ⬜
 Streaming stdin + follow (the launch demo), slide mode, HTML export.

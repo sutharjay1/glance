@@ -28,6 +28,7 @@ regex = "1"              # in-document search
 notify = "6"             # auto-reload file watching (inotify/FSEvents/ReadDirectoryChangesW)
 # Image decode for the image ladder. png+jpeg only (default features pull ~15 formats); +258 KB.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+ureq = "2"               # tiny blocking HTTP for remote images (rustls TLS; +1.2 MB, ADR 0006)
 # Parsing only (no theme engine): we map syntect scopes → our own Role enum so glance's
 # dark/light + OSC 11 theming stays in control. fancy-regex avoids the onig C dependency.
 syntect = { version = "5", default-features = false, features = [

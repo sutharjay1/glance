@@ -5,6 +5,7 @@
 pub mod app;
 pub mod copy;
 pub mod highlighter;
+pub mod images;
 pub mod overlays;
 pub mod render;
 pub mod search;
