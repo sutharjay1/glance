@@ -11,6 +11,7 @@ pub mod fuzzy;
 pub mod md;
 pub mod open;
 pub mod paint;
+pub mod stream;
 pub mod style;
 pub mod term;
 pub mod text;
@@ -77,16 +78,60 @@ pub fn run(args: &[String]) -> i32 {
     let no_color = parsed.no_color;
     let width_override = parsed.width.or((cfg.width > 0).then_some(cfg.width));
 
-    let Some(path) = parsed.files.first() else {
+    let stdin_piped = !std::io::stdin().is_terminal();
+    let stdout_tty = std::io::stdout().is_terminal();
+
+    // Streaming mode (the `llm | glance` demo): piped stdin + interactive stdout + no file → live-
+    // render stdin as it arrives. Keys still come from /dev/tty (crossterm reads the tty, not fd 0).
+    if stdin_piped && stdout_tty && !parsed.pipe && !parsed.timing && parsed.files.is_empty() {
+        let depth = if no_color {
+            ColorDepth::None
+        } else {
+            Capabilities::from_env(false).color
+        };
+        // OSC 11 auto-theme self-skips here (stdin isn't the tty), falling back to the default.
+        let theme_dark = if theme_explicit {
+            theme_dark
+        } else {
+            term::osc::detect_dark_background().unwrap_or(theme_dark)
+        };
+        let reader = stream::StreamReader::spawn_stdin();
+        let docs = vec![(Vec::new(), None)]; // starts empty; fills from the stream
+        return match view::app::run(
+            docs,
+            theme_dark,
+            depth,
+            true,
+            width_override,
+            line_numbers,
+            Some(reader),
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("glance: {e}");
+                1
+            }
+        };
+    }
+
+    // Document source: a file argument, else piped stdin (`glance < x.md`, `cat x | glance | cat`).
+    // The interactive-stdin case (piped stdin + TTY stdout) was handled by the streaming branch.
+    let (input, has_file) = if let Some(path) = parsed.files.first() {
+        match std::fs::read_to_string(path) {
+            Ok(s) => (s, true),
+            Err(e) => {
+                eprintln!("glance: {path}: {e}");
+                return 1;
+            }
+        }
+    } else if stdin_piped {
+        (
+            std::io::read_to_string(std::io::stdin()).unwrap_or_default(),
+            false,
+        )
+    } else {
         eprintln!("glance {VERSION}: no input file. Try --help.");
         return 0;
-    };
-    let input = match std::fs::read_to_string(path) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("glance: {path}: {e}");
-            return 1;
-        }
     };
 
     // `--timing`: measure launch→first-paint (parse + viewport layout) and exit. This is the
@@ -109,8 +154,10 @@ pub fn run(args: &[String]) -> i32 {
 
     let is_tty = std::io::stdout().is_terminal();
 
-    // Interactive TUI when we own a terminal and weren't asked to pipe.
-    if is_tty && !parsed.pipe {
+    // Interactive TUI when we own a terminal, weren't asked to pipe, and have file(s) to open.
+    // (Interactive stdin is the streaming case, already handled above.)
+    if is_tty && !parsed.pipe && has_file {
+        let path = &parsed.files[0];
         let depth = if no_color {
             ColorDepth::None
         } else {
@@ -140,7 +187,15 @@ pub fn run(args: &[String]) -> i32 {
                 Err(e) => eprintln!("glance: {extra}: {e} (skipped)"),
             }
         }
-        return match view::app::run(docs, theme_dark, depth, true, width_override, line_numbers) {
+        return match view::app::run(
+            docs,
+            theme_dark,
+            depth,
+            true,
+            width_override,
+            line_numbers,
+            None,
+        ) {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("glance: {e}");

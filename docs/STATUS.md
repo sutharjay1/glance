@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 4: streaming stdin (the llm|glance demo) · JAY-94
+**Phase:** 4 (🟨) · **Focus:** differentiators · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- **Key enabler confirmed by reading crossterm 0.28 source:** its event source reads from `tty_fd()` = `/dev/tty` (not stdin fd 0). So in streaming mode the piped document (stdin) and interactive keys (/dev/tty) coexist with **no manual tty handling**.
+- New `src/stream.rs` (all pure bits tested): `stable_boundary(text)` — the **fence-aware** stable/active split (last blank line *outside* a ```` ``` ````/`~~~` fence; a blank inside a streamed code block is never a false boundary). `StreamState.append(bytes)` accumulates **bytes** (a chunk can split a UTF-8 char) and re-parses only the active tail, caching stable-prefix blocks. `StreamReader::spawn_stdin` (reader thread → channel, EOF closes it). `key_pauses_follow`/`key_resumes_follow`. 5 unit tests (boundary cases, fenced code, tail re-parse, streamed code block, follow keys).
+- `view::app::run` gained a `stream` param: drains bytes each tick → `ViewerState::set_blocks` (relayout, clamp scroll) → auto-`to_bottom` while following; re-enqueues highlight/images (doc grew); repaints. Scroll-up pauses follow, `G`/End resumes; a persistent `stream_pill` (`▼ following` / `▼ paused (G to follow)`) shows in the status row (new `ViewerState` field, not cleared by keypress like `toast`). First paint isn't blocked — nothing renders until the first chunk.
+- `lib.rs`: streaming detected when **stdin piped + stdout TTY + no file**; also wired plain **stdin pipe-mode** (`glance < x.md`, `cat x | glance | cat`) via `std::io::read_to_string(stdin)`.
+- **195 total green**, fmt + clippy clean, reinstalled. Binary 4.23 MB (streaming adds no deps), first-paint 0.52 ms.
+
+**Next:** slide mode (`-s`: `---` splits slides, remapped keys), then HTML export (`--export html`). Then Phase 4 done → Phase 5 (ports + launch).
+
+---
+
 ## 2026-07-22 — Phase 3: background image worker → **PHASE 3 COMPLETE** · JAY-93
 **Phase:** 3 (✅) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

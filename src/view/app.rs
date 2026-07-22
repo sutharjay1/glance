@@ -26,6 +26,7 @@ use crate::md::layout::LinkRef;
 use crate::md::parse::Block;
 use crate::open::{self, classify, LinkTarget};
 use crate::paint::paint;
+use crate::stream::{key_pauses_follow, key_resumes_follow, StreamReader, StreamState};
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key, Mouse};
 use crate::theme::{self, Theme};
@@ -100,6 +101,15 @@ fn enqueue_images(
                 });
             }
         }
+    }
+}
+
+/// The streaming status pill shown at the bottom: live-following vs. paused (scrolled up).
+fn stream_pill_text(following: bool) -> String {
+    if following {
+        "▼ following".to_string()
+    } else {
+        "▼ paused (G to follow)".to_string()
     }
 }
 
@@ -199,6 +209,7 @@ fn install_panic_hook() {
 
 /// Run the interactive viewer over `blocks`. `width_override` (non-zero) fixes the content
 /// width; otherwise the terminal width is used. Returns when the user quits.
+#[allow(clippy::too_many_arguments)] // interactive entry point legitimately takes the full config
 pub fn run(
     docs: Vec<(Vec<Block>, Option<PathBuf>)>,
     theme_dark: bool,
@@ -206,8 +217,13 @@ pub fn run(
     hyperlinks: bool,
     width_override: Option<usize>,
     line_numbers: bool,
+    stream: Option<StreamReader>,
 ) -> io::Result<()> {
     install_panic_hook();
+    // Streaming mode: the (single) document grows from stdin; auto-follow the bottom until the
+    // user scrolls up. `following` is only meaningful when `stream` is Some.
+    let mut stream_state = StreamState::new();
+    let mut following = stream.is_some();
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
     let width = width_override
         .filter(|&w| w > 0)
@@ -259,6 +275,10 @@ pub fn run(
             tabs.active_index(),
             tabs.active(),
         );
+    }
+    if stream.is_some() {
+        tabs.active_mut()
+            .set_stream_pill(Some(stream_pill_text(following)));
     }
 
     loop {
@@ -338,8 +358,32 @@ pub fn run(
             )?;
         }
 
-        // Always poll (never block): the watcher, highlight, and image workers all deliver events
-        // that must be serviced while the user is idle.
+        // Streaming: fold in any bytes that arrived from stdin, re-parse the active tail, and
+        // (while following) keep the viewport pinned to the bottom. Re-enqueue highlight/images
+        // since the doc grew. Nothing renders until the first chunk, so first paint isn't blocked.
+        if let Some(reader) = &stream {
+            let bytes = reader.drain();
+            if !bytes.is_empty() {
+                let blocks = stream_state.append(&bytes);
+                let state = tabs.active_mut();
+                state.set_blocks(blocks);
+                if following {
+                    state.to_bottom();
+                }
+                requested.clear();
+                requested_images.clear();
+                enqueue_tab(&highlighter, &mut requested, 0, tabs.active());
+                if images {
+                    enqueue_images(&image_loader, &mut requested_images, 0, tabs.active());
+                }
+                draw(
+                    &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
+                )?;
+            }
+        }
+
+        // Always poll (never block): the watcher, highlight, image, and stream workers all deliver
+        // events that must be serviced while the user is idle.
         if !event::poll(POLL_TICK)? {
             continue;
         }
@@ -462,11 +506,22 @@ pub fn run(
                             full = true; // theme changes every color → full repaint
                             state.set_toast(if dark { "theme: dark" } else { "theme: light" });
                         }
-                        other => match state.on_key(other) {
-                            Action::Quit => break,
-                            Action::Redraw => {}
-                            Action::Ignore => continue,
-                        },
+                        other => {
+                            // Streaming: scrolling up pauses auto-follow; `G`/End resumes it.
+                            if stream.is_some() {
+                                if key_resumes_follow(other) {
+                                    following = true;
+                                } else if key_pauses_follow(other) {
+                                    following = false;
+                                }
+                                state.set_stream_pill(Some(stream_pill_text(following)));
+                            }
+                            match state.on_key(other) {
+                                Action::Quit => break,
+                                Action::Redraw => {}
+                                Action::Ignore => continue,
+                            }
+                        }
                     },
                     Mode::Search(mut query) => match k {
                         Key::Char(c) => {
@@ -656,7 +711,7 @@ fn status_line(state: &ViewerState, mode: &Mode, tab_label: Option<String>) -> O
         )),
         Mode::Help => None, // the help overlay carries its own instructions
         // Priority on the status row: a transient toast, then the search readout, then the
-        // multi-tab label (only present when more than one file is open).
+        // streaming pill, then the multi-tab label.
         Mode::Normal if state.toast().is_some() => state.toast().map(String::from),
         Mode::Normal => state
             .search
@@ -668,6 +723,7 @@ fn status_line(state: &ViewerState, mode: &Mode, tab_label: Option<String>) -> O
                     format!("/{}  {}/{}", s.query, s.position(), s.len())
                 }
             })
+            .or_else(|| state.stream_pill().map(String::from))
             .or(tab_label),
     }
 }

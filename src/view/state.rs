@@ -48,6 +48,9 @@ pub struct ViewerState {
     /// Images the background worker has fetched + rendered (ordinal → rows). Re-applied on every
     /// layout; cleared when the doc or width changes (the render is width-specific).
     resolved_images: ResolvedImages,
+    /// Persistent streaming status line (e.g. `▼ following` / `▼ paused`); unlike `toast` it is not
+    /// cleared by keypresses. `None` outside streaming mode.
+    stream_pill: Option<String>,
 }
 
 impl ViewerState {
@@ -72,7 +75,17 @@ impl ViewerState {
             toast: None,
             line_numbers,
             resolved_images,
+            stream_pill: None,
         }
+    }
+
+    /// Set (or clear) the persistent streaming status pill.
+    pub fn set_stream_pill(&mut self, pill: Option<String>) {
+        self.stream_pill = pill;
+    }
+
+    pub fn stream_pill(&self) -> Option<&str> {
+        self.stream_pill.as_deref()
     }
 
     /// Number of standalone images in the current document (for the image worker to enqueue).
@@ -118,6 +131,14 @@ impl ViewerState {
         if let Some(s) = &self.search {
             self.search = Some(Search::new(&s.query, &self.doc.text));
         }
+    }
+
+    /// Replace the document's blocks (streaming append) and re-lay-out, preserving+clamping scroll.
+    /// Resolved images are dropped (ordinals may have shifted as the doc grew).
+    pub fn set_blocks(&mut self, blocks: Vec<Block>) {
+        self.blocks = blocks;
+        self.resolved_images.clear();
+        self.relayout();
     }
 
     /// Toggle the code line-number gutter and re-lay-out (it changes code width). Resolved images
