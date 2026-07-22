@@ -99,6 +99,65 @@ pub fn parse(input: &str) -> Document {
     }
 }
 
+/// Return a copy of the block tree with each link followed by a ` (url)` text run. Used for
+/// terminals without OSC 8 hyperlink support (and pipe output): baking the suffix into the tree
+/// *before* layout means it wraps as real content instead of overflowing the line (paint would
+/// otherwise append it post-wrap). The link itself is preserved so its text stays styled.
+pub fn with_url_suffixes(blocks: &[Block]) -> Vec<Block> {
+    blocks.iter().map(suffix_block).collect()
+}
+
+fn suffix_block(b: &Block) -> Block {
+    match b {
+        Block::Heading { level, inlines } => Block::Heading {
+            level: *level,
+            inlines: suffix_inlines(inlines),
+        },
+        Block::Paragraph(v) => Block::Paragraph(suffix_inlines(v)),
+        Block::Code { .. } | Block::ThematicBreak => b.clone(),
+        Block::BlockQuote(bs) => Block::BlockQuote(with_url_suffixes(bs)),
+        Block::Callout { kind, blocks } => Block::Callout {
+            kind: *kind,
+            blocks: with_url_suffixes(blocks),
+        },
+        Block::List {
+            ordered,
+            start,
+            items,
+        } => Block::List {
+            ordered: *ordered,
+            start: *start,
+            items: items
+                .iter()
+                .map(|it| Item {
+                    task: it.task,
+                    blocks: with_url_suffixes(&it.blocks),
+                })
+                .collect(),
+        },
+    }
+}
+
+fn suffix_inlines(v: &[Inline]) -> Vec<Inline> {
+    let mut out = Vec::new();
+    for i in v {
+        match i {
+            Inline::Link { url, inlines } => {
+                out.push(Inline::Link {
+                    url: url.clone(),
+                    inlines: suffix_inlines(inlines),
+                });
+                out.push(Inline::Text(format!(" ({url})")));
+            }
+            Inline::Emph(x) => out.push(Inline::Emph(suffix_inlines(x))),
+            Inline::Strong(x) => out.push(Inline::Strong(suffix_inlines(x))),
+            Inline::Strike(x) => out.push(Inline::Strike(suffix_inlines(x))),
+            other => out.push(other.clone()),
+        }
+    }
+    out
+}
+
 // --- Tree builder ---------------------------------------------------------
 
 enum Frame {

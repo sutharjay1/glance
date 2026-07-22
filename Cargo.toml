@@ -26,7 +26,8 @@ serde = { version = "1", features = ["derive"] }  # config deserialization
 toml = "0.8"             # ~/.config/glance/config.toml
 
 [dev-dependencies]
-# Phase 1+: insta (snapshots), expectrl (PTY)
+insta = "1"  # golden snapshot tests
+# Phase 2+: expectrl (PTY)
 
 # Smallest, fastest binary (ADR 0004): ~3-6 MB target vs mdterm's 9.7 MB.
 [profile.release]

@@ -2,11 +2,11 @@
 //! [`ColorDepth`].
 //!
 //! Painting is separate from layout so a theme toggle or color-depth change re-paints without
-//! re-wrapping. Two behaviors from the plan live here:
-//! - **Link runs**: consecutive spans sharing an href become one OSC 8 hyperlink (not one per
-//!   word). When hyperlinks are unavailable, a single dim ` (url)` suffix is appended per run.
-//! - **`no_wrap` suppression**: code/table/rule lines get neither OSC 8 nor ` (url)` suffixes,
-//!   so column alignment is preserved (plan §8).
+//! re-wrapping. Link handling:
+//! - **OSC 8 link runs**: consecutive spans sharing an href become one hyperlink (not one per
+//!   word), suppressed on `no_wrap` lines (tables/code) to keep alignment (plan §8).
+//! - **No OSC 8**: the ` (url)` suffix is baked into the block tree *before* layout by
+//!   `parse::with_url_suffixes` (so it wraps as content), not appended here post-wrap.
 //!
 //! `ColorDepth::None` yields clean plain text (no SGR, no OSC) for `--no-color`/pipe output.
 
@@ -43,9 +43,6 @@ pub fn paint(line: &Line, theme: &Theme, depth: ColorDepth, hyperlinks: bool) ->
         }
         if use_osc {
             out.push_str(osc::LINK_CLOSE);
-        } else if linkable && !hyperlinks {
-            // One dim suffix per link run.
-            paint_suffix(&mut out, &format!(" ({})", href.unwrap()), theme, depth);
         }
         i = j;
     }
@@ -62,8 +59,14 @@ pub fn render_document(
     hyperlinks: bool,
 ) -> String {
     let doc = parse(input);
+    // Without OSC 8, bake ` (url)` suffixes into the tree so they wrap as content.
+    let blocks = if hyperlinks {
+        doc.blocks
+    } else {
+        crate::md::parse::with_url_suffixes(&doc.blocks)
+    };
     let mut out = String::new();
-    for line in layout_blocks(&doc.blocks, width) {
+    for line in layout_blocks(&blocks, width) {
         out.push_str(&paint(&line, theme, depth, hyperlinks));
         out.push('\n');
     }
@@ -82,21 +85,6 @@ fn paint_span(out: &mut String, span: &Span, theme: &Theme, depth: ColorDepth) {
         out.push_str(ansi::RESET);
     } else {
         out.push_str(&span.text);
-    }
-}
-
-fn paint_suffix(out: &mut String, text: &str, theme: &Theme, depth: ColorDepth) {
-    if depth == ColorDepth::None {
-        out.push_str(text);
-        return;
-    }
-    let p = ansi::fg(theme.dim, depth);
-    if p.is_empty() {
-        out.push_str(text);
-    } else {
-        out.push_str(&ansi::sgr(&p));
-        out.push_str(text);
-        out.push_str(ansi::RESET);
     }
 }
 
@@ -204,7 +192,9 @@ mod tests {
     }
 
     #[test]
-    fn link_suffix_fallback_when_no_hyperlinks() {
+    fn no_hyperlinks_emits_no_osc8() {
+        // paint itself never adds a suffix now — it only decides OSC 8. The ` (url)` suffix is
+        // baked into the tree by render_document (see url_suffix_baked_when_no_hyperlinks).
         let l = line(
             vec![Span {
                 text: "docs".into(),
@@ -214,8 +204,30 @@ mod tests {
             false,
         );
         let s = paint(&l, &dark(), ColorDepth::TrueColor, false);
-        assert!(!s.contains("\x1b]8;;")); // no OSC 8
-        assert!(s.contains("(https://x.io)")); // dim suffix instead
+        assert!(!s.contains("\x1b]8;;")); // no OSC 8 when hyperlinks off
+    }
+
+    #[test]
+    fn url_suffix_baked_when_no_hyperlinks() {
+        // render_document without hyperlinks shows the URL inline (wrapped as content).
+        let out = render_document(
+            "see [docs](https://x.io) now",
+            80,
+            &dark(),
+            ColorDepth::None,
+            false,
+        );
+        assert!(out.contains("(https://x.io)"));
+        // ...and it does not appear when hyperlinks are on (OSC 8 carries it instead).
+        let osc = render_document(
+            "see [docs](https://x.io) now",
+            80,
+            &dark(),
+            ColorDepth::TrueColor,
+            true,
+        );
+        assert!(!osc.contains("(https://x.io)"));
+        assert!(osc.contains("\x1b]8;;https://x.io"));
     }
 
     #[test]

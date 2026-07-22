@@ -1,0 +1,40 @@
+# glance features
+
+A **fast** terminal markdown viewer with `inline code`, [a link](https://example.com), and
+*emphasis* — this paragraph is long enough to wrap at narrow widths so we exercise the word
+wrapper and its hanging indents.
+
+## Lists
+
+- first bullet
+- a longer bullet item that should wrap onto a second continuation line without repeating the marker
+- nested content stays aligned
+
+1. ordered one
+2. ordered two
+
+- [x] a completed task
+- [ ] an open task
+
+## Callouts
+
+> [!NOTE]
+> Callouts render as titled panels with a colored bar down the side.
+
+> [!WARNING]
+> This one is a warning, and its body also wraps inside the panel when it gets long enough.
+
+## Quote and code
+
+> a plain blockquote, wrapped with a bar prefix on every line it occupies
+
+```rust
+fn main() {
+    let answer = 42; // the meaning
+    println!("hello {}", answer);
+}
+```
+
+---
+
+Done.
