@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: layout::DocLayout (indexed layout) · JAY-91
+**Phase:** 1 (🟨) · **Focus:** markdown pipeline (layout complete) · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `layout_document` → `DocLayout { lines, text, headings, code_blocks, links }`: top-level headings + code blocks indexed with line positions, links collected from all lines' spans (merging same-href runs). This is what the event loop consults for `[`/`]`, `/` search, `o` TOC, `f` link picker, and click hit-testing.
+- **Design call:** deferred the `(block,width)` cache + viewport-first background layout — a full-doc layout is cheap and scrolling just slices `lines[top..]`, so no cache is needed to scroll smoothly. Will add only if a perf gate on a huge doc demands it. Tables still deferred.
+- **84 tests green**, fmt + clippy clean (commit a02c660). `layout` module now functionally complete.
+
+**Next:** `view::render` — frame builder (DocLayout + viewport → painted visible lines) + damage diff (rewrite only changed rows) + synchronized-output writer. Pure/testable core before the event loop wiring.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: md::highlight (instant tokenizer) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** markdown pipeline · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
