@@ -1,8 +1,10 @@
 ---
 source: tests/render_snapshots.rs
+assertion_line: 20
 expression: "render(44, ColorDepth::None)"
 ---
 glance features
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 A fast terminal markdown viewer with inline
 code, a link (https://example.com), and
@@ -11,6 +13,7 @@ wrap at narrow widths so we exercise the
 word wrapper and its hanging indents.
 
 Lists
+────────────────────────────────────────────
 
 • first bullet
 • a longer bullet item that should wrap onto
@@ -25,6 +28,7 @@ Lists
 ○ an open task
 
 Callouts
+────────────────────────────────────────────
 
 ▎ ⓘ NOTE
 ▎ Callouts render as titled panels with a
@@ -36,6 +40,7 @@ Callouts
 ▎ enough.
 
 Quote and code
+────────────────────────────────────────────
 
 ▏ a plain blockquote, wrapped with a bar
 ▏ prefix on every line it occupies

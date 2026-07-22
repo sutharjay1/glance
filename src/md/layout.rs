@@ -249,14 +249,7 @@ fn collect_links(lines: &[Line]) -> Vec<LinkRef> {
 /// Lay out one block at content width `w`. `line_numbers` adds a gutter to code blocks.
 pub fn layout_block(block: &Block, w: usize, line_numbers: bool) -> Vec<Line> {
     match block {
-        Block::Heading { level: _, inlines } => {
-            let style = Style {
-                bold: true,
-                role: Role::Heading,
-                ..Default::default()
-            };
-            wrap_inlines(inlines, style, w, &empty(), &empty())
-        }
+        Block::Heading { level, inlines } => layout_heading(*level, inlines, w),
         Block::Paragraph(inlines) => wrap_inlines(inlines, Style::default(), w, &empty(), &empty()),
         Block::Code { code, lang } => {
             // A ```mermaid block renders as box-art (falling back to raw source if unsupported).
@@ -361,6 +354,53 @@ impl Style {
     fn with_code(mut self) -> Self {
         self.code = true;
         self
+    }
+}
+
+/// Lay out a heading with a visual hierarchy. Terminals have fixed-size cells (no font sizing), so
+/// levels are distinguished by **weight, color, a marker prefix, and an underline**: H1/H2 are bold
+/// and underlined (heavy / light) as section separators, H3 is bold with a `▎` bar, and H4–H6 fade
+/// through the accent color to dim with `▸`/`•`/`·` markers.
+fn layout_heading(level: u8, inlines: &[Inline], w: usize) -> Vec<Line> {
+    let (role, bold, marker) = match level {
+        1 => (Role::Heading, true, ""),
+        2 => (Role::Heading, true, ""),
+        3 => (Role::Heading, true, "▎ "),
+        4 => (Role::Accent, true, "▸ "),
+        5 => (Role::Accent, false, "• "),
+        _ => (Role::Dim, false, "· "),
+    };
+    let style = Style {
+        bold,
+        role,
+        ..Default::default()
+    };
+    let (first, cont) = if marker.is_empty() {
+        (empty(), empty())
+    } else {
+        (
+            Span::new(marker, Style::role(Role::Accent)),
+            Span::new(" ".repeat(width(marker)), Style::default()),
+        )
+    };
+    let mut lines = wrap_inlines(inlines, style, w, &first, &cont);
+    // Underline the two top levels as section separators (heavy for H1, light + dim for H2).
+    match level {
+        1 => lines.push(heading_rule(w, '━', Role::Heading)),
+        2 => lines.push(heading_rule(w, '─', Role::Dim)),
+        _ => {}
+    }
+    lines
+}
+
+/// A full-width rule line under a heading.
+fn heading_rule(w: usize, ch: char, role: Role) -> Line {
+    Line {
+        spans: vec![Span::new(
+            ch.to_string().repeat(w.max(1)),
+            Style::role(role),
+        )],
+        no_wrap: true,
     }
 }
 
