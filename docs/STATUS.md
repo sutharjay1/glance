@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: TOC overlay (o) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `view::overlays::Toc`: pure heading picker over `DocLayout.headings` — depth-indented lines, `j`/`k` clamped selection, `selected_line` for jump, `view(w,h)` windows long lists keeping the selection visible, selected row full-width reverse-highlighted.
+- `view::app`: `Mode::Toc` overlay — `o` opens (when headings exist), `j`/`k`/arrows move, Enter `center_on`s the heading + closes, `Esc`/`o`/`q` close; full-screen render + status line (`TOC n/m · j/k · Enter · Esc`).
+- 6 tests (order, clamp, selected-line, empty, indent+highlight, windowing). **134 total green**, fmt + clippy clean (commit 58d367b). Reinstalled.
+
+**Next:** fuzzy heading filter (`:`) — the TOC with a live text filter over headings (small fuzzy scorer). Then link picker (`f`), copy stack.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: search UI (interactive) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
