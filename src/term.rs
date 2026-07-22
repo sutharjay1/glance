@@ -7,4 +7,5 @@
 
 pub mod ansi;
 pub mod caps;
+pub mod input;
 pub mod osc;

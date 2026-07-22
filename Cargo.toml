@@ -19,6 +19,7 @@ path = "src/lib.rs"
 # Phase 1 will add: pulldown-cmark, crossterm, syntect (Phase 3), ...
 unicode-width = "0.2"
 base64 = "0.22"          # OSC 52 clipboard payload encoding
+crossterm = "0.28"       # raw mode, key/mouse decode, Windows ConPTY (ADR 0003)
 
 [dev-dependencies]
 # Phase 1+: insta (snapshots), expectrl (PTY)

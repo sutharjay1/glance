@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: term::input (crossterm mapping) · JAY-91
+**Phase:** 1 (🟨) · **Focus:** terminal layer (done, testable parts) · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `term::input`: app-level `Key`/`Mouse`/`Event` model + pure `map_event(crossterm::Event) → Option<Event>`. crossterm owns decoding (ADR 0003); we normalize to a small stable vocabulary. Key releases ignored (avoids Windows double-processing); Ctrl-letters lowercased; scroll/left-click mapped with coords for hit-testing.
+- Added `crossterm` 0.28 dep. TDD: 8 new tests (char, ctrl, nav keys, release-ignored, scroll/click, right-click-ignored, resize, paste-ignored). **37 total green**, fmt + clippy clean.
+- Terminal layer's *testable* surface complete. `TerminalGuard` (RAII raw-mode restore) + raw-mode setup are I/O wiring → built with the event loop and PTY-tested, not unit-tested in isolation.
+
+**Next:** pivot to the markdown pipeline — `md::parse` (pulldown-cmark GFM → Block tree; ESC/C0 sanitize; callout + task detection). High TDD value.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: term::osc (OSC 8/52/11) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** terminal layer · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
