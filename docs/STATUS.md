@@ -5,6 +5,18 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 3: image ladder foundation (probe + half-block) · JAY-93
+**Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- **Size checkpoint → user decision ([ADR 0006](adr/0006-bundle-tls-for-remote-images.md)):** spiked the deps before building. `image` (png+jpeg, no defaults) = **+258 KB → 2.9 MB** (cheap). `ureq`+rustls for remote HTTPS = **+1.2 MB → 4.1 MB** (all TLS), over the 3.5 MB "erases the win" line — so I **stopped and asked**. User chose **include remote via rustls** (4.1 MB, still ~2.2× < mdterm's 9 MB). Reverted the spike; added `image` for real (used now), `ureq` lands with the fetch worker next.
+- New `caps::ImageProtocol` (Kitty | HalfBlock | None) + pure `detect_image_protocol` (Kitty via `TERM` contains kitty / `KITTY_WINDOW_ID` / `TERM_PROGRAM` ghostty|wezterm; else half-block on any color; None without color) — 3 tests. `Capabilities` gained an `images` field.
+- New `term::images::half_block` — the universal renderer: scale an image to `cols × (rows*2)` pixels and emit `▀` cells with `fg` = top sub-pixel, `bg` = bottom sub-pixel (doubles vertical resolution, works in any color terminal). Pure/testable (2×2 red-over-blue → fg=red/bg=blue) + `cell_size` aspect math. To carry raw per-cell RGB, `style::Style` gained explicit `fg`/`bg: Option<Rgb>` (overriding the role→theme mapping); `paint` emits them as truecolor SGR (downsampled). All existing sites use `Default` → unaffected.
+- **183 total green**, fmt + clippy clean. Binary still 2.66 MB (renderer not yet reachable from `main` → `image` DCE'd; +258 KB lands when image nodes are wired next).
+
+**Next:** Kitty renderer (base64 PNG in the APC graphics sequence, fast path when probed) + wire markdown image nodes — layout a placeholder line instantly, then a background worker (reuse the highlighter's patch pattern; add `ureq` here) fetches (fs/http) + decodes + scales + patches in. first-paint never blocks on fetch. Closes Phase 3.
+
+---
+
 ## 2026-07-22 — Phase 3: background highlight worker (syntect live) · JAY-93
 **Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

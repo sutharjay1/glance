@@ -4,6 +4,8 @@
 //! link href) — never raw ANSI. `paint` turns that into escape sequences against the active
 //! theme + terminal color depth, so a theme or depth change re-paints without re-laying-out.
 
+use crate::term::ansi::Rgb;
+
 /// Semantic role of a span. `paint` maps role + emphasis flags to concrete colors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Role {
@@ -36,6 +38,11 @@ pub struct Style {
     /// Reverse-video highlight (search matches). Depth-independent, so it shows at any color.
     pub highlight: bool,
     pub role: Role,
+    /// Explicit foreground color, overriding the role→theme mapping. Used by the half-block image
+    /// renderer, where each cell carries the raw pixel color rather than a semantic role.
+    pub fg: Option<Rgb>,
+    /// Explicit background color (half-block image cells; the bottom sub-pixel).
+    pub bg: Option<Rgb>,
 }
 
 impl Style {

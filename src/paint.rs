@@ -110,10 +110,21 @@ fn sgr_params(span: &Span, theme: &Theme, depth: ColorDepth) -> String {
     if !fgp.is_empty() {
         parts.push(fgp);
     }
+    // Explicit background (half-block image cells); no role maps to a background otherwise.
+    if let Some(bgc) = span.style.bg {
+        let bgp = ansi::bg(bgc, depth);
+        if !bgp.is_empty() {
+            parts.push(bgp);
+        }
+    }
     parts.join(";")
 }
 
 fn pick_color(span: &Span, theme: &Theme) -> Rgb {
+    // An explicit color (image pixel) overrides the role→theme mapping.
+    if let Some(fg) = span.style.fg {
+        return fg;
+    }
     if span.href.is_some() {
         return theme.link;
     }
@@ -162,6 +173,26 @@ mod tests {
         let s = paint(&l, &dark(), ColorDepth::None, true);
         assert_eq!(s, "bold");
         assert!(!s.contains('\x1b'));
+    }
+
+    #[test]
+    fn explicit_fg_and_bg_reach_truecolor_output() {
+        // A half-block image cell: red top (fg), blue bottom (bg).
+        let l = line(
+            vec![Span::new(
+                "▀",
+                Style {
+                    fg: Some(Rgb::new(255, 0, 0)),
+                    bg: Some(Rgb::new(0, 0, 255)),
+                    ..Default::default()
+                },
+            )],
+            true,
+        );
+        let s = paint(&l, &dark(), ColorDepth::TrueColor, true);
+        assert!(s.contains("38;2;255;0;0")); // explicit fg overrides the role→theme color
+        assert!(s.contains("48;2;0;0;255")); // explicit bg
+        assert!(s.contains('▀'));
     }
 
     #[test]

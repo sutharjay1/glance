@@ -59,11 +59,48 @@ pub fn detect_color_depth(
     }
 }
 
+/// Best available image-rendering protocol, most → least capable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageProtocol {
+    /// The Kitty graphics protocol (crisp, pixel-accurate). Kitty, Ghostty, WezTerm.
+    Kitty,
+    /// Universal fallback: colored `▀` half-block cells. Any color terminal.
+    HalfBlock,
+    /// No image support (no color at all).
+    None,
+}
+
+/// Decide the image protocol from color depth + terminal identity signals. Kitty is chosen when
+/// the terminal advertises it (`TERM` contains `kitty`, `KITTY_WINDOW_ID` set, or a known
+/// Kitty-graphics `TERM_PROGRAM`); otherwise any color terminal gets half-blocks. Pure/testable.
+pub fn detect_image_protocol(
+    color: ColorDepth,
+    term: Option<&str>,
+    term_program: Option<&str>,
+    kitty_window_id: Option<&str>,
+) -> ImageProtocol {
+    if color == ColorDepth::None {
+        return ImageProtocol::None;
+    }
+    let kitty = kitty_window_id.is_some()
+        || term.is_some_and(|t| t.to_ascii_lowercase().contains("kitty"))
+        || term_program.is_some_and(|p| {
+            let p = p.to_ascii_lowercase();
+            p == "ghostty" || p == "wezterm"
+        });
+    if kitty {
+        ImageProtocol::Kitty
+    } else {
+        ImageProtocol::HalfBlock
+    }
+}
+
 /// Detected terminal capabilities. Grows over Phase 1 (OSC 8/52 support, cell pixel size,
-/// synchronized-output support); for now it carries the color depth.
+/// synchronized-output support); carries the color depth and image protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Capabilities {
     pub color: ColorDepth,
+    pub images: ImageProtocol,
 }
 
 impl Capabilities {
@@ -73,8 +110,17 @@ impl Capabilities {
         let no_color = force_no_color || std::env::var_os("NO_COLOR").is_some();
         let colorterm = std::env::var("COLORTERM").ok();
         let term = std::env::var("TERM").ok();
+        let term_program = std::env::var("TERM_PROGRAM").ok();
+        let kitty_window_id = std::env::var("KITTY_WINDOW_ID").ok();
+        let color = detect_color_depth(no_color, colorterm.as_deref(), term.as_deref());
         Capabilities {
-            color: detect_color_depth(no_color, colorterm.as_deref(), term.as_deref()),
+            color,
+            images: detect_image_protocol(
+                color,
+                term.as_deref(),
+                term_program.as_deref(),
+                kitty_window_id.as_deref(),
+            ),
         }
     }
 
@@ -155,7 +201,60 @@ mod tests {
 
     #[test]
     fn is_truecolor_helper() {
-        assert!(Capabilities { color: TrueColor }.is_truecolor());
-        assert!(!Capabilities { color: Ansi256 }.is_truecolor());
+        assert!(Capabilities {
+            color: TrueColor,
+            images: ImageProtocol::HalfBlock,
+        }
+        .is_truecolor());
+        assert!(!Capabilities {
+            color: Ansi256,
+            images: ImageProtocol::HalfBlock,
+        }
+        .is_truecolor());
+    }
+
+    #[test]
+    fn image_protocol_none_without_color() {
+        assert_eq!(
+            detect_image_protocol(ColorDepth::None, Some("xterm-kitty"), None, Some("1")),
+            ImageProtocol::None
+        );
+    }
+
+    #[test]
+    fn image_protocol_detects_kitty() {
+        assert_eq!(
+            detect_image_protocol(TrueColor, Some("xterm-kitty"), None, None),
+            ImageProtocol::Kitty
+        );
+        assert_eq!(
+            detect_image_protocol(TrueColor, Some("xterm-256color"), None, Some("13")),
+            ImageProtocol::Kitty
+        ); // KITTY_WINDOW_ID set
+        assert_eq!(
+            detect_image_protocol(Ansi256, Some("xterm"), Some("ghostty"), None),
+            ImageProtocol::Kitty
+        );
+        assert_eq!(
+            detect_image_protocol(TrueColor, Some("xterm"), Some("WezTerm"), None),
+            ImageProtocol::Kitty
+        );
+    }
+
+    #[test]
+    fn image_protocol_falls_back_to_half_block() {
+        assert_eq!(
+            detect_image_protocol(
+                TrueColor,
+                Some("xterm-256color"),
+                Some("Apple_Terminal"),
+                None
+            ),
+            ImageProtocol::HalfBlock
+        );
+        assert_eq!(
+            detect_image_protocol(Ansi16, Some("screen"), None, None),
+            ImageProtocol::HalfBlock
+        );
     }
 }
