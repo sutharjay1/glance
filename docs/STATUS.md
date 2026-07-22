@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 5: mermaid port → **ALL PORTS DONE, BUILD FEATURE-COMPLETE** · JAY-95
+**Phase:** 5 (🟨 — ports done, launch remains) · **Focus:** ports + launch · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- New `src/mermaid.rs` — fenced ```` ```mermaid ```` flowcharts → Unicode box-art. Pure `parse` handles the simple subset (`graph`/`flowchart` `TD`/`LR`; nodes `A[Label]`/`A(Label)`/`A{Label}`/bare; edges `A --> B`, `A -->|label| B`, `A --- B`, chains `A --> B --> C`), interning nodes in first-seen order + collecting directed edges. `render` draws each node as a bordered box (`┌─┐│└─┘`) stacked vertically with `│`/`▼` connectors for consecutive edges; branch/back edges listed below as `from ──▶ to`. **Anything unrecognized (sequenceDiagram, subgraphs, styling) → raw-source fallback** — never crashes or garbles. Wired in `layout_block`: a `lang=="mermaid"` code block renders via `mermaid::render` instead of the syntax highlighter. 6 tests (nodes/edges, chains+labels, non-flowchart→None, box-art contains labels+border+arrow, unknown→raw, branching→listed). Verified e2e (Start→Middle→End boxes with a `▼ done` labeled arrow).
+- **225 total green**, fmt + clippy clean, reinstalled. Binary **4.34 MB**.
+
+## **BUILD FEATURE-COMPLETE** 🎉
+All 5 phases shipped on `feature/jay-91-phase-1-viewer-core`: Phase 1 viewer core · Phase 2 interactivity · Phase 3 syntect + images · Phase 4 streaming/slides/export · Phase 5 ports (math/json/mermaid). **225 tests, 4.34 MB (2.1× < mdterm's 9 MB), first-paint <1 ms.** The 4 mdterm weaknesses are all fixed (lazy highlight, streaming stdin, universal OSC-52 copy, GFM callouts).
+
+**Remaining = LAUNCH (needs the user, outward-facing):** README with parity + benchmark tables (data already in `docs/benchmarks.md`); vhs GIFs of the `llm | glance` demo; `cargo publish` → crates.io; Homebrew tap formula; `cargo-dist` prebuilt binaries + GitHub release; Show HN + X thread. And: PR/merge the branch to `main`. Handed to the user for their accounts + timing.
+
+---
+
 ## 2026-07-22 — Phase 5: JSON viewer port · JAY-95
 **Phase:** 5 (🟨) · **Focus:** ports + launch · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

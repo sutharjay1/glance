@@ -11,6 +11,7 @@ pub mod export;
 pub mod fuzzy;
 pub mod json;
 pub mod md;
+pub mod mermaid;
 pub mod open;
 pub mod paint;
 pub mod stream;

@@ -259,7 +259,12 @@ pub fn layout_block(block: &Block, w: usize, line_numbers: bool) -> Vec<Line> {
         }
         Block::Paragraph(inlines) => wrap_inlines(inlines, Style::default(), w, &empty(), &empty()),
         Block::Code { code, lang } => {
-            layout_code(code, lang.as_deref().unwrap_or(""), w, line_numbers)
+            // A ```mermaid block renders as box-art (falling back to raw source if unsupported).
+            if lang.as_deref() == Some("mermaid") {
+                crate::mermaid::render(code, w)
+            } else {
+                layout_code(code, lang.as_deref().unwrap_or(""), w, line_numbers)
+            }
         }
         // Ports (JSON, …) supply their own colored lines; show them verbatim.
         Block::Prerendered(lines) => lines.clone(),
