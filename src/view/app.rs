@@ -121,6 +121,10 @@ fn stream_pill_text(following: bool) -> String {
 const RELOAD_DEBOUNCE: Duration = Duration::from_millis(120);
 /// How long to block for terminal input between watcher checks (only when watching files).
 const POLL_TICK: Duration = Duration::from_millis(50);
+/// Blank rows between the document content and the bottom status/hint bar (breathing room).
+const BAR_GAP: usize = 2;
+/// Total bottom rows reserved for the bar + its gap (content viewport = terminal rows − this).
+const BAR_RESERVED: usize = BAR_GAP + 1;
 
 /// Input mode of the viewer: `/` search prompt, `o` TOC, `:` fuzzy filter, `f` link picker,
 /// `h`/`?` help, or normal document navigation.
@@ -232,8 +236,8 @@ pub fn run(
         .filter(|&w| w > 0)
         .map_or(cols as usize, |w| w.min(cols as usize));
     // One tab per document; per-tab scroll/search state is preserved across switches. The bottom
-    // row is reserved for the persistent status/hint bar, so the content viewport is `rows - 1`.
-    let content_rows = (rows as usize).saturating_sub(1).max(1);
+    // rows are reserved for the status/hint bar + a gap above it, so content is `rows - BAR_RESERVED`.
+    let content_rows = (rows as usize).saturating_sub(BAR_RESERVED).max(1);
     let states = docs
         .into_iter()
         .map(|(blocks, path)| ViewerState::new(blocks, width, content_rows, path, line_numbers))
@@ -394,8 +398,11 @@ pub fn run(
         }
         match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
-                // Reserve the bottom row for the status/hint bar (see `run`).
-                tabs.resize_all(cols as usize, (rows as usize).saturating_sub(1).max(1));
+                // Reserve the bottom rows for the status/hint bar + its gap (see `run`).
+                tabs.resize_all(
+                    cols as usize,
+                    (rows as usize).saturating_sub(BAR_RESERVED).max(1),
+                );
                 // Width changed → prior highlights + image renders are the wrong geometry.
                 requested.clear();
                 enqueue_tab(
@@ -774,7 +781,10 @@ fn draw(
             state.search.as_ref(),
         ),
     };
-    // Append the persistent status/hint bar as its own (reserved) bottom row.
+    // A blank gap for breathing room, then the persistent status/hint bar on the last row.
+    for _ in 0..BAR_GAP {
+        frame.push(String::new());
+    }
     frame.push(status_bar(
         &bar_text(state, mode, tabs.label()),
         state.width,
