@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: md::highlight (instant tokenizer) · JAY-91
+**Phase:** 1 (🟨) · **Focus:** markdown pipeline · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `md::highlight`: a tiny language-agnostic lexer (keyword/string/comment/number/function/plain) with per-language specs for js/ts, python, rust, go, bash, sql (+aliases). Line + multi-line block comments, escape-aware strings, case-insensitive SQL keywords. **No grammar loading** — safe on the first-paint path (syntect patches over it in Phase 3).
+- Added code-token roles (`style`) + colors (`theme` dark/light) + `paint` mapping; wired into `layout` so recognized-lang code blocks render colored (unknown langs stay plain).
+- Bug caught by the full-chain integration test: `pick_color` resolved `style.code` before the role, so all code tokens went generic-green — fixed to resolve token roles first. (Also: amended the commit after catching a failing test I'd committed — process note.)
+- **80 tests green**, fmt + clippy clean (commit 192f10f).
+
+**Next:** finish `layout` — `DocLayout` (lines + plain text + heading/code/link indices for search, nav, hit-testing) + `(block,width)` cache. Pure, testable; unblocks the event loop.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: paint + theme → 🎉 end-to-end render · JAY-91
 **Phase:** 1 (🟨) · **Focus:** render · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

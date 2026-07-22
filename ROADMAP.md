@@ -29,7 +29,7 @@ Ground the README comparison table and de-risk the vendored modules.
 ## Phase 1 — viewer core (week 1–2)  🟨  ← risky foundation
 Term layer → parse → layout → paint → render → navigation → pipe mode → config. Built one TDD module per loop iteration.
 - **term:** ✅ `caps` · ✅ `ansi` (downsampling) · ✅ `osc` (8/52/11) · ✅ `input` (crossterm→Event map) · ⬜ `TerminalGuard` (with event-loop wiring, PTY-tested)
-- **md:** ✅ `parse` · 🟨 `layout` (wrap engine + hanging indents + callout panels + `style` model done; `(block,width)` cache + viewport-first + DocLayout indices + tables next) · ⬜ `highlight` (micro-tokenizer)
+- **md:** ✅ `parse` · 🟨 `layout` (wrap/indents/callouts/tokenizer done; `(block,width)` cache + viewport-first + DocLayout indices + tables next) · ✅ `highlight` (micro-tokenizer: 6 langs, wired into code blocks)
 - **render/view:** ✅ `paint` (ANSI + OSC 8 link runs + `(url)` fallback) · ⬜ `render` (damage diff) · ⬜ `state`+`app` (event loop) · ⬜ navigation
 - 🎉 **end-to-end pipe render works**: `glance file.md` parses→lays out→paints (colored on TTY, clean plain when piped). Interactive TUI still to come.
 - **modes/cli:** ⬜ pipe/TTY · ⬜ `cli` (lexopt) · ⬜ `config` (toml)
