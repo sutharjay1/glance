@@ -3,3 +3,4 @@
 //! it can be snapshot-tested without a terminal.
 
 pub mod render;
+pub mod state;
