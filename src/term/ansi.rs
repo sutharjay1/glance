@@ -25,6 +25,29 @@ impl Rgb {
 /// The SGR reset sequence (`ESC[0m`).
 pub const RESET: &str = "\x1b[0m";
 
+// --- Screen / cursor operations -------------------------------------------
+
+/// Begin synchronized output (CSI ?2026h): the terminal buffers until [`SYNC_END`], so a frame
+/// appears atomically with no tearing.
+pub const SYNC_BEGIN: &str = "\x1b[?2026h";
+/// End synchronized output.
+pub const SYNC_END: &str = "\x1b[?2026l";
+/// Clear from the cursor to the end of the line.
+pub const CLEAR_LINE_EOL: &str = "\x1b[K";
+/// Clear the whole screen.
+pub const CLEAR_SCREEN: &str = "\x1b[2J";
+/// Enter / leave the alternate screen buffer.
+pub const ENTER_ALT: &str = "\x1b[?1049h";
+pub const LEAVE_ALT: &str = "\x1b[?1049l";
+/// Hide / show the cursor.
+pub const HIDE_CURSOR: &str = "\x1b[?25l";
+pub const SHOW_CURSOR: &str = "\x1b[?25h";
+
+/// Move the cursor to `(row, col)`, both 0-based (emitted 1-based per the CSI convention).
+pub fn move_to(row: usize, col: usize) -> String {
+    format!("\x1b[{};{}H", row + 1, col + 1)
+}
+
 /// Wrap SGR parameters in an escape sequence, or return empty for empty params.
 pub fn sgr(params: &str) -> String {
     if params.is_empty() {

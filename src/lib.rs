@@ -11,6 +11,7 @@ pub mod style;
 pub mod term;
 pub mod text;
 pub mod theme;
+pub mod view;
 
 use std::io::IsTerminal;
 use term::caps::{Capabilities, ColorDepth};
