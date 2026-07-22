@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: view::render (frame + damage diff) · JAY-91
+**Phase:** 1 (🟨) · **Focus:** render · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Shipped `view::render`: `build_frame` (slice DocLayout viewport → painted rows, blank past EOF) + `render(prev, next)` damage diff (rewrite only changed rows: cursor move + clear-to-EOL each, wrapped in synchronized output CSI ?2026). `render(None, next)` = the `--full-repaint` fallback. `max_top` scroll clamp.
+- Added screen/cursor ops to `term::ansi` (sync begin/end, alt-screen, cursor show/hide, `move_to`, clear) — also feeds the upcoming TerminalGuard.
+- TDD: 6 tests incl. **damage-diff-writes-only-changed-rows** and **identical-frames-write-nothing-but-sync** (proves a no-op frame emits zero row writes — the point of damage rendering). **90 total green**, fmt + clippy clean (commit 77ae41f).
+
+**Next:** `view::state` — `ViewerState` + pure navigation (scroll/page/half-page/g/G, heading jumps via DocLayout indices). Testable state transitions before the terminal event loop (`app` + TerminalGuard, PTY-tested).
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: layout::DocLayout (indexed layout) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** markdown pipeline (layout complete) · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

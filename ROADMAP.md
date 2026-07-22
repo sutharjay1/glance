@@ -30,7 +30,7 @@ Ground the README comparison table and de-risk the vendored modules.
 Term layer → parse → layout → paint → render → navigation → pipe mode → config. Built one TDD module per loop iteration.
 - **term:** ✅ `caps` · ✅ `ansi` (downsampling) · ✅ `osc` (8/52/11) · ✅ `input` (crossterm→Event map) · ⬜ `TerminalGuard` (with event-loop wiring, PTY-tested)
 - **md:** ✅ `parse` · ✅ `layout` (wrap/indents/callouts/tokenizer + `DocLayout` indices; cache/viewport/tables deferred as optimizations) · ✅ `highlight` (6 langs, wired)
-- **render/view:** ✅ `paint` (ANSI + OSC 8 link runs + `(url)` fallback) · ⬜ `render` (damage diff) · ⬜ `state`+`app` (event loop) · ⬜ navigation
+- **render/view:** ✅ `paint` · ✅ `render` (frame builder + damage diff + sync output + full-repaint fallback) · ⬜ `state`+`app` (event loop) · ⬜ navigation
 - 🎉 **end-to-end pipe render works**: `glance file.md` parses→lays out→paints (colored on TTY, clean plain when piped). Interactive TUI still to come.
 - **modes/cli:** ⬜ pipe/TTY · ⬜ `cli` (lexopt) · ⬜ `config` (toml)
 **Exit:** `glance README.md` first-paint < 80 ms; smooth scroll; clean pipe; all §5 nav keys; snapshots green at 44/80/120.
