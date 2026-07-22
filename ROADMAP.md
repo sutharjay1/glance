@@ -37,7 +37,7 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 **Exit:** `glance README.md` first-paint < 80 ms; smooth scroll; clean pipe; all §5 nav keys; snapshots green at 44/80/120.
 
 ## Phase 2 — interactivity (week 3)  🟨
-- 🟨 **search**: ✅ `Search` core (regex + literal fallback, `n`/`N` cycle, jump+center) + state integration; ⬜ `/` prompt UI + match highlighting in render
+- ✅ **search**: `Search` core (regex + literal fallback, `n`/`N`, jump+center) + `/` prompt input mode + live reverse-video match highlighting + `query n/m` status line
 - ⬜ TOC (`o`) · ⬜ fuzzy filter (`:`) · ⬜ link picker (`f`) + local-file nav + `Backspace` history
 - ⬜ copy stack (OSC 52 + pbcopy/wl-copy/xclip/xsel/PowerShell + `p` + click-to-copy + toasts)
 - ⬜ help overlay · ⬜ theme toggle (`t`) + OSC 11 auto · ⬜ line numbers (`l`) · ⬜ tabs (`Tab`) · ⬜ auto-reload

@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: search UI (interactive) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- Search is now **fully interactive**: `style.highlight` (reverse-video, depth-independent) + `paint` SGR 7; `render::highlight_line` splits painted spans at match byte-offsets; `build_frame` takes an optional `Search` and highlights matches on visible rows.
+- `view::app`: `Mode::Search` input mode — `/` opens the prompt, typed chars build the query (Backspace edits), Enter runs the search (jump + highlight), Esc cancels; bottom status line shows the live prompt and a `query n/m` readout.
+- 5 new tests incl. a deterministic build_frame→highlight→paint integration check (no PTY). **128 total green**, fmt + clippy clean (commit 5d1fc84). Reinstalled to `~/.cargo/bin/glance`.
+
+**Next:** TOC overlay (`o`) — list headings from `DocLayout.headings`, arrow-select, Enter to jump. Then fuzzy filter (`:`), link picker (`f`), copy stack.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: search core · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
