@@ -9,6 +9,7 @@
 //! `ViewerState` → repaint changed rows via `view::render`. It is exercised by PTY integration
 //! tests (spawn, scroll, quit, assert clean teardown) rather than unit tests.
 
+use std::collections::HashSet;
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
@@ -29,11 +30,44 @@ use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key, Mouse};
 use crate::theme::{self, Theme};
 use crate::view::copy;
+use crate::view::highlighter::{blocks_by_priority, HighlightRequest, Highlighter};
 use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
 use crate::view::tabs::Tabs;
 use crate::view::watch::{Debouncer, FileWatcher};
+
+/// Key into the "already requested" set: (tab, code-block index, width, line-numbers). Width and
+/// line-numbers are included so a resize / `l` toggle re-requests at the new geometry.
+type HlKey = (usize, usize, usize, bool);
+
+/// Post highlight requests for `state`'s code blocks (visible ones first), skipping any already
+/// requested at the current geometry. Blocks with no language are skipped — syntect needs one.
+fn enqueue_tab(
+    h: &Highlighter,
+    requested: &mut HashSet<HlKey>,
+    tab_idx: usize,
+    state: &ViewerState,
+) {
+    let width = state.width;
+    let line_numbers = state.line_numbers();
+    for block in blocks_by_priority(&state.doc.code_blocks, state.top, state.height) {
+        let cb = &state.doc.code_blocks[block];
+        if cb.lang.trim().is_empty() {
+            continue;
+        }
+        if requested.insert((tab_idx, block, width, line_numbers)) {
+            h.request(HighlightRequest {
+                tab: tab_idx,
+                block,
+                content: cb.content.clone(),
+                lang: cb.lang.clone(),
+                width,
+                line_numbers,
+            });
+        }
+    }
+}
 
 /// Debounce window for auto-reload: a file must be quiet this long after its last change event
 /// before we re-read it (coalesces an editor's write→rename→truncate burst into one reload).
@@ -164,9 +198,20 @@ pub fn run(
     )?;
 
     // Auto-reload: watch every open file's directory; a settled change re-reads that tab in
-    // place. `None` (no files, e.g. piped stdin, or a watch error) keeps the classic blocking loop.
+    // place. `None` (no files, e.g. piped stdin, or a watch error).
     let watcher = FileWatcher::new(&tabs.paths()).unwrap_or(None);
     let mut debouncer = Debouncer::new(RELOAD_DEBOUNCE);
+
+    // Background syntect highlighting: spawn the worker only after the first paint (its SyntaxSet
+    // load happens on that thread, never on the startup path) and enqueue the active tab's blocks.
+    let highlighter = Highlighter::spawn();
+    let mut requested: HashSet<HlKey> = HashSet::new();
+    enqueue_tab(
+        &highlighter,
+        &mut requested,
+        tabs.active_index(),
+        tabs.active(),
+    );
 
     loop {
         // Fold in filesystem events, then reload any file that has gone quiet.
@@ -181,6 +226,14 @@ pub fn run(
                     redraw |= tabs.reload_path(&p);
                 }
                 if redraw {
+                    // The doc changed → its highlights are stale; re-enqueue at current geometry.
+                    requested.clear();
+                    enqueue_tab(
+                        &highlighter,
+                        &mut requested,
+                        tabs.active_index(),
+                        tabs.active(),
+                    );
                     tabs.active_mut().set_toast("reloaded");
                     draw(
                         &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
@@ -189,13 +242,42 @@ pub fn run(
             }
         }
 
-        // Block for input — but only briefly when watching, so reloads still fire while idle.
-        if watcher.is_some() && !event::poll(POLL_TICK)? {
+        // Patch in finished highlight results; repaint only when the active tab's visible content
+        // actually changed. Stale-geometry results (post-resize / `l`) are dropped by the checks.
+        let active = tabs.active_index();
+        let mut hl_repaint = false;
+        for res in highlighter.drain() {
+            if let Some(tab) = tabs.get_mut(res.tab) {
+                if tab.width == res.width && tab.line_numbers() == res.line_numbers {
+                    let visible = tab.code_block_visible(res.block);
+                    if tab.patch_code_block(res.block, res.lines) && res.tab == active && visible {
+                        hl_repaint = true;
+                    }
+                }
+            }
+        }
+        if hl_repaint {
+            draw(
+                &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, false, &mode,
+            )?;
+        }
+
+        // Always poll (never block): both the watcher and the highlight worker deliver events
+        // that must be serviced while the user is idle.
+        if !event::poll(POLL_TICK)? {
             continue;
         }
         match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
                 tabs.resize_all(cols as usize, rows as usize);
+                // Width changed → prior highlights are the wrong geometry; re-request.
+                requested.clear();
+                enqueue_tab(
+                    &highlighter,
+                    &mut requested,
+                    tabs.active_index(),
+                    tabs.active(),
+                );
                 draw(
                     &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
                 )?;
@@ -227,6 +309,13 @@ pub fn run(
                 } else {
                     tabs.prev();
                 }
+                // Newly-active tab hasn't been highlighted yet — enqueue its blocks.
+                enqueue_tab(
+                    &highlighter,
+                    &mut requested,
+                    tabs.active_index(),
+                    tabs.active(),
+                );
                 draw(
                     &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
                 )?;

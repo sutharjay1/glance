@@ -40,6 +40,11 @@ impl Tabs {
         &mut self.tabs[self.active]
     }
 
+    /// Mutable access to a tab by index (for patching a highlight result into any tab).
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut ViewerState> {
+        self.tabs.get_mut(idx)
+    }
+
     /// Switch to the next / previous tab (wrapping).
     pub fn next(&mut self) {
         if self.tabs.len() > 1 {

@@ -210,6 +210,22 @@ fn layout_code(code: &str, lang: &str, w: usize, line_numbers: bool) -> Vec<Line
             })
             .collect()
     };
+    render_code_rows(rows, w, line_numbers)
+}
+
+/// Re-render a code block from precomputed per-line spans (e.g. the background syntect
+/// highlighter's output) with the same gutter + width handling as [`layout_code`]. Because the
+/// row count equals the source-line count either way, the resulting line count matches
+/// `layout_code`'s — so a highlighted block can be patched in over the micro-tokenizer's version
+/// without shifting any downstream line indices.
+pub fn layout_code_with(rows: Vec<Vec<Span>>, w: usize, line_numbers: bool) -> Vec<Line> {
+    render_code_rows(rows, w, line_numbers)
+}
+
+/// Shared code-block renderer: one display line per source line (truncated, `no_wrap`), with an
+/// optional right-aligned line-number gutter. Every span is marked `code` so it paints against
+/// the code palette regardless of which highlighter produced it.
+fn render_code_rows(rows: Vec<Vec<Span>>, w: usize, line_numbers: bool) -> Vec<Line> {
     let gutter_w = if line_numbers {
         gutter_width(rows.len())
     } else {
@@ -219,6 +235,13 @@ fn layout_code(code: &str, lang: &str, w: usize, line_numbers: bool) -> Vec<Line
     rows.into_iter()
         .enumerate()
         .map(|(i, spans)| {
+            let spans: Vec<Span> = spans
+                .into_iter()
+                .map(|mut s| {
+                    s.style.code = true;
+                    s
+                })
+                .collect();
             let mut out = truncate_spans(spans, content_w);
             if line_numbers {
                 let digits = gutter_w.saturating_sub(3);

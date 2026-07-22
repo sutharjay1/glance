@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 3: background highlight worker (syntect live) · JAY-93
+**Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- New `view::highlighter` — the background worker, same shape as the auto-reload watcher (producer thread + two mpsc channels + a drain step in the loop). `Highlighter::spawn()` runs a thread that owns the `SyntaxSet` (its **first** `highlight` call lazily loads it — on that thread, off the startup path), renders each block to ready-to-patch `Line`s via `layout_code_with` (layout work also off the UI thread), and returns a `HighlightResult`. `blocks_by_priority(top,height)` orders on-screen blocks first (pure, 2 tests).
+- `md::layout`: factored `render_code_rows` out of `layout_code` and exposed `layout_code_with(rows,…)` — same gutter/width/`no_wrap` handling, so a syntect render has identical line geometry (row count == source-line count) and can be patched in without shifting indices. All code spans marked `code`.
+- `ViewerState`: `patch_code_block(idx, lines)` replaces a block's display lines in place (rejects wrong count → indices/search stay valid); `code_block_visible(idx)` gates repaints. `Tabs::get_mut`. (2 tests.)
+- `view::app`: spawns the worker after first paint, enqueues the active tab's blocks (visible-first, skipping no-lang blocks), and drains results each loop tick — patching the owning tab and repainting only when the *active* tab's *visible* content changed. Stale-geometry results (post-resize / `l` toggle) are dropped by width+line-number checks; resize/tab-switch/reload re-enqueue. The loop now **always** `event::poll(50 ms)` (was watcher-gated) so highlight upgrades land while idle. Micro-tokenizer output shows instantly; syntect upgrades it progressively.
+- **Checkpoints (both pass):** release binary **2.6 MB** (< 3 MB; 3.4× < mdterm's 9 MB); first-paint **3.7 ms** (test.md) / **12.9 ms** (5k-line, 384 KB) — syntect adds **0 ms** to first paint (worker-thread, lazy). **176 total green**, fmt + clippy clean, reinstalled.
+
+**Next:** the image ladder — vendor `image.rs` → adapt to the `Line`/cell model, wire Kitty + half-block (capability probe in `caps.rs`), background fetch/decode/scale, placeholder line until ready, crop cache. Closes Phase 3.
+
+---
+
 ## 2026-07-22 — Phase 3: syntect highlighter core (scope→role) · JAY-93
 **Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

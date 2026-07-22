@@ -15,7 +15,7 @@ phases land.
 | mdterm (release, unoptimized profile) | 9.0 MB |
 | **glance** — Phase 1 scaffold (LTO + `codegen-units=1` + strip + panic=abort) | 831 KB |
 | **glance** — Phase 2 complete (adds regex/notify/toml/serde) | ~2.0 MB |
-| **glance** — Phase 3 with syntect wired (fancy-regex, parsing-only, no themes) | **~2.5 MB** |
+| **glance** — Phase 3 with syntect wired (fancy-regex, parsing-only, no themes) | **2.6 MB** |
 
 glance is **~3.6× smaller** than mdterm even with syntect's 75-language highlighter linked —
 and far under a Bun-compiled binary (60–90 MB), validating the Rust decision (ADR 0001). Note

@@ -131,6 +131,33 @@ impl ViewerState {
             .map(|c| c.content.clone())
     }
 
+    /// Whether code block `idx` intersects the current viewport — used to decide whether a
+    /// highlight patch needs an immediate repaint.
+    pub fn code_block_visible(&self, idx: usize) -> bool {
+        self.doc
+            .code_blocks
+            .get(idx)
+            .is_some_and(|c| c.start < self.top + self.height && c.end > self.top)
+    }
+
+    /// Replace the display lines of code block `idx` with `new_lines` (the background highlight
+    /// worker's syntect output). Rejected — returns `false` — if the index is unknown or the line
+    /// count differs from the block's current span (which would shift every downstream index). The
+    /// plain-text index is untouched, so search positions stay valid.
+    pub fn patch_code_block(&mut self, idx: usize, new_lines: Vec<crate::style::Line>) -> bool {
+        let Some(cb) = self.doc.code_blocks.get(idx) else {
+            return false;
+        };
+        let (start, end) = (cb.start, cb.end);
+        if new_lines.len() != end.saturating_sub(start) {
+            return false;
+        }
+        for (i, line) in new_lines.into_iter().enumerate() {
+            self.doc.lines[start + i] = line;
+        }
+        true
+    }
+
     /// The current file's absolute path as a string (for `p`), or `None` for stdin.
     pub fn file_path_string(&self) -> Option<String> {
         self.path.as_ref().map(|p| {
@@ -585,5 +612,36 @@ mod tests {
         assert_eq!(s.doc.len(), len_before);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn patch_code_block_replaces_lines_and_rejects_wrong_count() {
+        let mut s = state("intro\n\n```rust\nfn a() {}\nlet x = 1;\n```", 80, 20);
+        let (start, count) = {
+            let c = &s.doc.code_blocks[0];
+            (c.start, c.end - c.start)
+        };
+        // Wrong line count is rejected (would shift downstream indices).
+        assert!(!s.patch_code_block(0, vec![]));
+        // Correct count patches in place; a sentinel span shows up on the first block line.
+        let newl: Vec<crate::style::Line> = (0..count)
+            .map(|i| crate::style::Line {
+                spans: vec![crate::style::Span::plain(format!("X{i}"))],
+                no_wrap: true,
+            })
+            .collect();
+        assert!(s.patch_code_block(0, newl));
+        assert!(s.doc.lines[start].spans.iter().any(|sp| sp.text == "X0"));
+        // Unknown index rejected.
+        assert!(!s.patch_code_block(99, vec![]));
+    }
+
+    #[test]
+    fn code_block_visible_tracks_viewport() {
+        let md = format!("{}\n\n```rust\nfn a() {{}}\n```", tall(40));
+        let mut s = state(&md, 80, 10);
+        assert!(!s.code_block_visible(0)); // block is far below the top
+        s.to_bottom();
+        assert!(s.code_block_visible(0)); // now on screen
     }
 }
