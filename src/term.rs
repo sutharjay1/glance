@@ -7,3 +7,4 @@
 
 pub mod ansi;
 pub mod caps;
+pub mod osc;

@@ -18,6 +18,7 @@ path = "src/lib.rs"
 # Added incrementally per phase to keep first-build fast (see ROADMAP Phase 0.5 note).
 # Phase 1 will add: pulldown-cmark, crossterm, syntect (Phase 3), ...
 unicode-width = "0.2"
+base64 = "0.22"          # OSC 52 clipboard payload encoding
 
 [dev-dependencies]
 # Phase 1+: insta (snapshots), expectrl (PTY)
