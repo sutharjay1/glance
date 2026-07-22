@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: view::state + view::app → 🎉 interactive TUI · JAY-91
+**Phase:** 1 (🟨) · **Focus:** the interactive viewer · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `view::state`: `ViewerState` + pure navigation (scroll/page/half-page, `g`/`G`, `[`/`]` heading jumps via DocLayout index, wheel, resize-relayout with scroll anchor) → `Action` (Redraw/Quit/Ignore). 9 tests, no terminal I/O (commit ec15174).
+- `view::app`: **`TerminalGuard`** RAII (enter alt-screen + raw + mouse + hide-cursor; Drop restores) + **panic hook** doing the same restore (release is `panic=abort`, so Drop won't run on panic — a crash must never break the terminal, plan §8). Event loop: crossterm event → `map_event` → state → `render` damage diff; resize forces full repaint. Wired into `run()`: TTY+file → TUI, else pipe (commit e908c77).
+- **PTY smoke verified**: `printf 'jjjGq' | script … glance demo.md` → exit 0, and the capture contains alt-screen enter+leave, cursor hide+show, mouse capture, and synchronized-output sequences — clean setup and teardown.
+- **99 tests green**, fmt + clippy clean. **glance is now a working interactive markdown viewer.**
+
+**Next (Phase 1 exit):** `cli` (lexopt: `-w/-T/-l/--no-color/--pipe`) + `config` (`~/.config/glance/config.toml`); then insta snapshots at 44/80/120 and a `--timing` first-paint gate.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: view::render (frame + damage diff) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** render · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
