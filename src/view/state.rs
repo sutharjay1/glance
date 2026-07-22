@@ -82,6 +82,15 @@ impl ViewerState {
         self.line_numbers
     }
 
+    /// The file's base name for the tab bar (`(stdin)` when there's no path).
+    pub fn name(&self) -> String {
+        self.path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "(stdin)".to_string())
+    }
+
     // --- Copy sources + toast ---------------------------------------------
 
     pub fn toast(&self) -> Option<&str> {

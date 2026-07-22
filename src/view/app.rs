@@ -31,6 +31,7 @@ use crate::view::copy;
 use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
+use crate::view::tabs::Tabs;
 
 /// Input mode of the viewer: `/` search prompt, `o` TOC, `:` fuzzy filter, `f` link picker,
 /// `h`/`?` help, or normal document navigation.
@@ -123,12 +124,11 @@ fn install_panic_hook() {
 /// Run the interactive viewer over `blocks`. `width_override` (non-zero) fixes the content
 /// width; otherwise the terminal width is used. Returns when the user quits.
 pub fn run(
-    blocks: Vec<Block>,
+    docs: Vec<(Vec<Block>, Option<PathBuf>)>,
     theme_dark: bool,
     depth: ColorDepth,
     hyperlinks: bool,
     width_override: Option<usize>,
-    path: Option<PathBuf>,
     line_numbers: bool,
 ) -> io::Result<()> {
     install_panic_hook();
@@ -136,7 +136,12 @@ pub fn run(
     let width = width_override
         .filter(|&w| w > 0)
         .map_or(cols as usize, |w| w.min(cols as usize));
-    let mut state = ViewerState::new(blocks, width, rows as usize, path, line_numbers);
+    // One tab per document; per-tab scroll/search state is preserved across switches.
+    let states = docs
+        .into_iter()
+        .map(|(blocks, path)| ViewerState::new(blocks, width, rows as usize, path, line_numbers))
+        .collect();
+    let mut tabs = Tabs::new(states);
     // Theme is toggled at runtime (`t`); it affects paint only, never layout.
     let mut dark = theme_dark;
     let mut theme = if dark { theme::dark() } else { theme::light() };
@@ -147,26 +152,40 @@ pub fn run(
     let mut mode = Mode::Normal;
 
     draw(
-        &mut out, &state, &theme, depth, hyperlinks, &mut prev, true, &mode,
+        &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
     )?;
 
     loop {
         match map_event(event::read()?) {
             Some(Event::Resize { cols, rows }) => {
-                state.on_resize(cols as usize, rows as usize);
+                tabs.resize_all(cols as usize, rows as usize);
                 draw(
-                    &mut out, &state, &theme, depth, hyperlinks, &mut prev, true, &mode,
+                    &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
                 )?;
             }
             Some(Event::Mouse(m)) if matches!(mode, Mode::Normal) => {
-                if state.on_mouse(m) == Action::Redraw {
+                if tabs.active_mut().on_mouse(m) == Action::Redraw {
                     draw(
-                        &mut out, &state, &theme, depth, hyperlinks, &mut prev, false, &mode,
+                        &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, false, &mode,
                     )?;
                 }
             }
+            // Tab / Shift+Tab switch tabs (Normal mode), before we borrow the active tab.
+            Some(Event::Key(k))
+                if matches!(mode, Mode::Normal) && matches!(k, Key::Tab | Key::BackTab) =>
+            {
+                if k == Key::Tab {
+                    tabs.next();
+                } else {
+                    tabs.prev();
+                }
+                draw(
+                    &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
+                )?;
+            }
             Some(Event::Key(k)) => {
                 let mut full = false;
+                let state = tabs.active_mut();
                 state.clear_toast(); // any keypress dismisses a transient toast
                                      // Take mode out so we can reassign it inside the match.
                 match std::mem::replace(&mut mode, Mode::Normal) {
@@ -194,14 +213,14 @@ pub fn run(
                         }
                         Key::Char('c') => {
                             let text = state.nearest_code_block();
-                            copy_to(&mut out, &mut state, "code block", text)?;
+                            copy_to(&mut out, state, "code block", text)?;
                         }
                         Key::Char('Y') => {
                             let text = Some(state.document_text());
-                            copy_to(&mut out, &mut state, "document", text)?;
+                            copy_to(&mut out, state, "document", text)?;
                         }
                         Key::Char('p') => match state.file_path_string() {
-                            Some(p) => copy_to(&mut out, &mut state, "path", Some(p))?,
+                            Some(p) => copy_to(&mut out, state, "path", Some(p))?,
                             None => state.set_toast("(stdin — no path)"),
                         },
                         Key::Char('h') | Key::Char('?') | Key::F(1) => {
@@ -293,7 +312,7 @@ pub fn run(
                             Key::Char(c) if c.is_ascii_digit() && c != '0' => {
                                 let idx = (c as u8 - b'1') as usize;
                                 if let Some(link) = links.at(idx).cloned() {
-                                    follow_link(&mut state, &link); // opens, then closes
+                                    follow_link(state, &link); // opens, then closes
                                 } else {
                                     mode = Mode::Links(links);
                                 }
@@ -308,7 +327,7 @@ pub fn run(
                             }
                             Key::Enter => {
                                 if let Some(link) = links.selected().cloned() {
-                                    follow_link(&mut state, &link);
+                                    follow_link(state, &link);
                                 }
                             }
                             Key::Esc | Key::Char('f') | Key::Char('q') => {} // close
@@ -319,7 +338,7 @@ pub fn run(
                     Mode::Help => full = true,
                 }
                 draw(
-                    &mut out, &state, &theme, depth, hyperlinks, &mut prev, full, &mode,
+                    &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, full, &mode,
                 )?;
             }
             _ => {}
@@ -332,7 +351,7 @@ pub fn run(
 #[allow(clippy::too_many_arguments)] // a render step legitimately takes the full frame context
 fn draw(
     out: &mut io::Stdout,
-    state: &ViewerState,
+    tabs: &Tabs,
     theme: &Theme,
     depth: ColorDepth,
     hyperlinks: bool,
@@ -340,6 +359,7 @@ fn draw(
     force_full: bool,
     mode: &Mode,
 ) -> io::Result<()> {
+    let state = tabs.active();
     let overlay = match mode {
         Mode::Toc(toc) => Some(toc.view(state.width, state.height)),
         Mode::Fuzzy(f) => Some(f.view(state.width, state.height)),
@@ -368,7 +388,7 @@ fn draw(
         ),
     };
     // Overlay the prompt / status on the bottom row when relevant.
-    if let Some(status) = status_line(state, mode) {
+    if let Some(status) = status_line(state, mode, tabs.label()) {
         if let Some(last) = frame.last_mut() {
             *last = status;
         }
@@ -382,7 +402,7 @@ fn draw(
 
 /// The bottom-row status line: the live `/` prompt while typing, or a `query  3/12` readout
 /// while a search is active.
-fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
+fn status_line(state: &ViewerState, mode: &Mode, tab_label: Option<String>) -> Option<String> {
     match mode {
         Mode::Search(query) => Some(format!("/{query}")),
         Mode::Toc(toc) => Some(format!(
@@ -406,14 +426,19 @@ fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
             l.len()
         )),
         Mode::Help => None, // the help overlay carries its own instructions
-        // A toast takes the status row when present; otherwise the search readout.
+        // Priority on the status row: a transient toast, then the search readout, then the
+        // multi-tab label (only present when more than one file is open).
         Mode::Normal if state.toast().is_some() => state.toast().map(String::from),
-        Mode::Normal => state.search.as_ref().map(|s| {
-            if s.is_empty() {
-                format!("/{}  no matches", s.query)
-            } else {
-                format!("/{}  {}/{}", s.query, s.position(), s.len())
-            }
-        }),
+        Mode::Normal => state
+            .search
+            .as_ref()
+            .map(|s| {
+                if s.is_empty() {
+                    format!("/{}  no matches", s.query)
+                } else {
+                    format!("/{}  {}/{}", s.query, s.position(), s.len())
+                }
+            })
+            .or(tab_label),
     }
 }

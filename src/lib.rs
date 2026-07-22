@@ -113,17 +113,23 @@ pub fn run(args: &[String]) -> i32 {
         } else {
             Capabilities::from_env(false).color
         };
-        let blocks = md::parse::parse(&input).blocks;
-        let file = Some(std::path::PathBuf::from(path));
-        return match view::app::run(
-            blocks,
-            theme_dark,
-            depth,
-            true,
-            width_override,
-            file,
-            line_numbers,
-        ) {
+        // One tab per file: the first file is already read into `input`; read the rest here,
+        // skipping any that fail (with a warning) so one bad path doesn't sink the session.
+        let mut docs: Vec<(Vec<md::parse::Block>, Option<std::path::PathBuf>)> = Vec::new();
+        docs.push((
+            md::parse::parse(&input).blocks,
+            Some(std::path::PathBuf::from(path)),
+        ));
+        for extra in &parsed.files[1..] {
+            match std::fs::read_to_string(extra) {
+                Ok(s) => docs.push((
+                    md::parse::parse(&s).blocks,
+                    Some(std::path::PathBuf::from(extra)),
+                )),
+                Err(e) => eprintln!("glance: {extra}: {e} (skipped)"),
+            }
+        }
+        return match view::app::run(docs, theme_dark, depth, true, width_override, line_numbers) {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("glance: {e}");

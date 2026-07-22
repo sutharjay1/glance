@@ -5,6 +5,18 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: multi-file tabs (Tab/Shift+Tab) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- New `view::tabs::Tabs` — a thin holder over `Vec<ViewerState>` + active index: `next`/`prev` (wrapping, no-op for a single tab), `active`/`active_mut`, `resize_all`, and a `label()` → `[2/3 name.md]` (None for one tab). Kept separate so cycling is unit-testable without a terminal (4 tests: single-tab no-cycle, wrap forward/back, label, independent per-tab scroll).
+- `app::run` now takes `Vec<(Vec<Block>, Option<PathBuf>)>` and builds `Tabs` (one `ViewerState` per file → per-file scroll/search/line-number state preserved for free). `Tab`/`BackTab` are intercepted in a **guard arm before** `let state = tabs.active_mut()` — sidesteps the borrow conflict of switching tabs while the active tab is mutably borrowed. `draw` takes `&Tabs`; `status_line` shows the tab label below toast/search (`.or(tab_label)`).
+- `lib.rs`: reads **all** `parsed.files` (first is already in `input`), skipping unreadable ones with a `… (skipped)` warning, and passes the docs vec to `app::run`.
+- **161 total green**, fmt + clippy clean (commit c341f3d). Reinstalled.
+
+**Next:** auto-reload (`notify` watcher + ~120 ms debounce; reload preserving scroll + active search; tolerate mid-write partial reads). Then the Phase 2 remainders: OSC 11 auto-theme, click-to-copy.
+
+---
+
 ## 2026-07-22 — Phase 2: code line numbers (l) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
