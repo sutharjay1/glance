@@ -25,11 +25,11 @@ verify against `viewer.rs` during Phase 0. Legend: ⬜ todo · 🟨 partial · �
 | 17 | Stdin (`cat x.md | glance`, keys via `/dev/tty`) | 1 | ⬜ |
 | 18 | Multiple files (`Tab`/`Shift+Tab`, per-file scroll) | 2 | ⬜ |
 | 19 | HTML export (`--export html`) | 4 | ⬜ |
-| 20 | Themes (dark/light, `t`, `-T`, config; dark accent `#FF5800`) | 2 | ⬜ |
+| 20 | Themes (dark/light, `t`, `-T`, config). glance accent **`#FF5800`** (intentional; mdterm uses Catppuccin-Mocha bg `#1E1E2E`/fg `#CDD6F4`, accent `#89B4FA`) | 2 | ⬜ |
 | 21 | Line numbers in code (`l`, `-l`, config) | 2 | ⬜ |
 | 22 | Config file (`~/.config/glance/config.toml`) | 1 | ⬜ |
 | 23 | Word wrapping (hanging indents, resize relayout) | 1 | ⬜ |
-| 24 | JSON viewer (`glance data.json`) | 5 | ⬜ |
+| 24 | JSON viewer (`glance data.json`) — interactive: `j/k/Enter/Space/l/h` navigate, `L` expand-all, `H` collapse-all, `D` toggle graph/diagram view | 5 | ⬜ |
 | 25 | Pipe-friendly (no TTY → styled text; `--no-color`; `--pipe`) | 1 | ⬜ |
 
 ## Beyond the reference (our differentiators)
@@ -45,5 +45,13 @@ verify against `viewer.rs` during Phase 0. Legend: ⬜ todo · 🟨 partial · �
 | Auto theme via OSC 11 | 2 | ⬜ |
 
 ## Keybindings (§5) — verify each with a PTY test
-`j/k/↓/↑`/wheel · `Space/PgDn` `b/PgUp` · `d/u` · `g/Home` `G/End` · `[`/`]` · `/` `n`/`N` `Esc` · `o` · `:` · `f` · `Backspace` · `c` · `Y` · `p` · click-copy · click-link · `t` · `l` · `Tab`/`Shift+Tab` · `h`/`?`/`F1` · `q`/`Ctrl+C`
-Slide mode remap: `Right`/`Space`/`j` next · `Left`/`b`/`k` prev · `g`/`G` first/last
+`j/k/↓/↑`/wheel · `Space/PgDn` `b/PgUp` · `d/u` · `g/Home` `G/End` · `[`/`]` · `/` `n`/`N` `Esc` · `o` · `:` · `f` · `Backspace` · `c` · `Y` · `p` · `m` (toggle mouse capture) · click-copy · click-link · `t` · `l` · `Tab`/`Shift+Tab` · `h`/`?`/`F1` · `q`/`Ctrl+C`
+Slide mode remap: `Right`/`Space`/`j` next · `Left`/`b`/`k` prev · `g`/`G` first/last; slide mode **disables** `/ o : f c Y [ ] Tab l m`.
+JSON mode: `j/k/Enter/Space/l/h` · `L` expand-all · `H` collapse-all · `D` graph view.
+
+### Behaviors to match (from source; see `parity-notes-from-source.md`)
+- `m` toggles mouse capture (ON by default), shown in help overlay (viewer.rs:1647).
+- Search executes on **Enter**, not live-as-you-type (differs from our `:` fuzzy filter, which *is* live).
+- Click a task-list checkbox → toggles `[ ]`/`[x]` **and writes the file** (viewer.rs:1218).
+- OSC 22 hand-cursor on link hover.
+- Reference clipboard is external-only (`pbcopy`; `xclip`→`xsel`) — our OSC 52 + `wl-copy`/PowerShell + `p` copy-path + `--pipe` are **differentiators**, confirmed absent upstream.

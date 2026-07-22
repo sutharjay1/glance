@@ -19,3 +19,12 @@ with MIT attribution in `vendor/NOTICE`. Rewrite exactly the four weaknesses + a
 - ✅ Phases 3 and 5 become adaptation, not from-scratch work.
 - ➖ Must adapt vendored code at seams to our `Line`/cell model; keep vendored files isolated.
 - ➖ License hygiene required: `vendor/NOTICE` + isolation, surveyed in Phase 0.
+
+## Phase 0 survey findings (2026-07-22) — see `docs/vendor-survey.md`
+Coupling to mdterm internals (drives adaptation cost):
+- **`image.rs` (~3299 LOC) — Low.** Zero `crate::` imports, no Theme/Style; only `crossterm::Color` at the edge. **Portable ~as-is (Phase 3).**
+- **math (`render_math`, ~215 LOC) — Low.** Pure `&str → String`. Copy verbatim (Phase 5).
+- **`diagram.rs` (~1135 LOC) — Medium.** Uses `Style`/`StyledSpan` + 4 Theme fields; owns the shared `Canvas`/`CardDrawRow` primitive.
+- **`json.rs` (~2293 LOC) — High.** ~6 `crate::style` types, ~15 Theme slots, and **reaches into `diagram`'s `Canvas`/`CardDrawRow`.**
+
+**Decision refinement:** vendor **`json.rs` + `diagram.rs` together as one unit** (Phase 5) — do not fork two canvases. License: mdterm is MIT © 2026 Gokul; full text in `vendor/NOTICE`.

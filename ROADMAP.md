@@ -12,13 +12,13 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done
 
 ---
 
-## Phase 0 — benchmark + vendor survey  ⬜
+## Phase 0 — benchmark + vendor survey  ✅ (2026-07-22)
 Ground the README comparison table and de-risk the vendored modules.
-- ⬜ Build reference (`cargo build --release`), hyperfine launch→render (pipe + export) → `docs/benchmarks.md`
-- ⬜ Skim `viewer.rs` key handling → seed `docs/parity-checklist.md`
-- ⬜ Vendor survey: read `image.rs`/`diagram.rs`/`json.rs`/math tables; deps + entry points; draft `vendor/NOTICE`
-- ⬜ Copy reference `test.md` → `tests/fixtures/`
-**Exit:** benchmarks recorded; parity checklist seeded; vendor survey + NOTICE drafted; fixture committed.
+- ✅ Built reference (release, 9.7 MB, ~20 s); hyperfine → [`docs/benchmarks.md`](docs/benchmarks.md). **Finding:** mdterm's ~60 ms is *fixed startup cost* (eager syntax/theme load), flat across doc size → validates lazy-highlight design.
+- ✅ Mined `viewer.rs` key handling → [`docs/parity-notes-from-source.md`](docs/parity-notes-from-source.md); folded gaps into the checklist (added `m` mouse-toggle, JSON-viewer keys, checkbox-toggle + OSC 22 behaviors; clarified accent).
+- ✅ Vendor survey → [`docs/vendor-survey.md`](docs/vendor-survey.md) + [`vendor/NOTICE`](vendor/NOTICE). **Finding:** `image.rs` = Low coupling (portable as-is, P3); `json.rs` + `diagram.rs` = must vendor **together** (json reaches into diagram's `Canvas`); math = copy verbatim.
+- ✅ Copied reference `test.md` → `tests/fixtures/` (+ generated `big-5k.md`).
+**Exit:** ✅ benchmarks recorded; parity notes captured; vendor survey + NOTICE drafted; fixtures committed.
 
 ## Phase 0.5 — scaffold  ⬜
 - ⬜ `cargo init --bin`; deps; release profile (`lto`, `codegen-units=1`, `strip`, `panic=abort`)
