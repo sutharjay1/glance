@@ -26,7 +26,7 @@ use crate::md::parse::Block;
 use crate::open::{self, classify, LinkTarget};
 use crate::paint::paint;
 use crate::term::caps::ColorDepth;
-use crate::term::input::{map_event, Event, Key};
+use crate::term::input::{map_event, Event, Key, Mouse};
 use crate::theme::{self, Theme};
 use crate::view::copy;
 use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
@@ -199,6 +199,17 @@ pub fn run(
                 draw(
                     &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, true, &mode,
                 )?;
+            }
+            // A left-click on a code block copies it (via the OSC 52 + native copy stack);
+            // any other mouse event (wheel) scrolls.
+            Some(Event::Mouse(Mouse::Click { row, .. })) if matches!(mode, Mode::Normal) => {
+                let state = tabs.active_mut();
+                if let Some(text) = state.code_block_at(row as usize) {
+                    copy_to(&mut out, state, "code block", Some(text))?;
+                    draw(
+                        &mut out, &tabs, &theme, depth, hyperlinks, &mut prev, false, &mode,
+                    )?;
+                }
             }
             Some(Event::Mouse(m)) if matches!(mode, Mode::Normal) => {
                 if tabs.active_mut().on_mouse(m) == Action::Redraw {

@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: click-to-copy → **PHASE 2 COMPLETE** · JAY-92
+**Phase:** 2 (✅) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `ViewerState::code_block_at(row)` — pure hit-test: `doc_line = top + row`, find the `CodeRef` whose `start..end` contains it, return its content (2 unit tests: hit at top incl. first/last row + miss on a paragraph row; hit after scrolling, exercising the offset math). Reuses the existing copy stack + toast — no new copy code.
+- `view::app`: a `Mouse::Click{row}` arm placed **above** the generic mouse arm intercepts left-clicks (wheel still scrolls via the fall-through). On a hit it calls `copy_to(out, state, "code block", …)` (OSC 52 write + native fallback + toast) and repaints.
+- **168 total green**, fmt + clippy clean.
+
+**PHASE 2 DONE** — search, TOC, fuzzy, links + local-file nav, copy stack (`c`/`Y`/`p` + click), help, theme toggle, line numbers, tabs, auto-reload, OSC 11 auto-theme, click-to-copy all shipped. Weakness #3 (broken copy) and #4 (no callouts, done in Phase 1) fixed.
+
+**Next → Phase 3 (highlight + images):** start with **syntect lazy highlight** on a worker thread — never `load_defaults` on startup (mdterm's exact bug); the regex micro-tokenizer stays the instant cold path; highlight visible code blocks first and patch frames in. Then the image ladder (vendor `image.rs`, wire Kitty + half-block, capability probe in `caps.rs`, background fetch/decode/scale, placeholder until ready).
+
+---
+
 ## 2026-07-22 — Phase 2: OSC 11 auto-theme · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

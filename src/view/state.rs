@@ -119,6 +119,18 @@ impl ViewerState {
             .map(|c| c.content.clone())
     }
 
+    /// The source of the code block at viewport row `row` (0-based from the top), or `None` if
+    /// the click didn't land on one. Accounts for the current scroll offset — used by
+    /// click-to-copy. A block occupies layout lines `start..end`.
+    pub fn code_block_at(&self, row: usize) -> Option<String> {
+        let line = self.top + row;
+        self.doc
+            .code_blocks
+            .iter()
+            .find(|c| line >= c.start && line < c.end)
+            .map(|c| c.content.clone())
+    }
+
     /// The current file's absolute path as a string (for `p`), or `None` for stdin.
     pub fn file_path_string(&self) -> Option<String> {
         self.path.as_ref().map(|p| {
@@ -502,6 +514,37 @@ mod tests {
         let s = state("intro\n\n```\nAAA\n```\n\nmid\n\n```\nBBB\n```", 80, 5);
         // top = 0 → nearest is the first code block
         assert!(s.nearest_code_block().unwrap().contains("AAA"));
+    }
+
+    #[test]
+    fn code_block_hit_test_at_top() {
+        let s = state("intro\n\n```\nAAA\n```\n\nmid\n\n```\nBBB\n```", 80, 20);
+        let (start, end, content) = {
+            let c = &s.doc.code_blocks[0];
+            (c.start, c.end, c.content.clone())
+        };
+        assert!(start > 0); // "intro" is above it
+                            // A click on any of the block's rendered rows hits it.
+        assert_eq!(s.code_block_at(start).unwrap(), content);
+        assert_eq!(s.code_block_at(end - 1).unwrap(), content);
+        // Row 0 is the intro paragraph — not a code block.
+        assert!(s.code_block_at(0).is_none());
+    }
+
+    #[test]
+    fn code_block_hit_test_accounts_for_scroll() {
+        // Push the block well below the top, then scroll to it.
+        let md = format!("{}\n\n```\nCODE\n```", tall(40));
+        let mut s = state(&md, 80, 10);
+        let (bstart, bcontent) = {
+            let c = &s.doc.code_blocks[0];
+            (c.start, c.content.clone())
+        };
+        s.scroll(bstart as isize); // block's first row now sits near the viewport top
+        let row = bstart - s.top; // convert doc line → viewport row
+        assert_eq!(s.code_block_at(row).unwrap(), bcontent);
+        // A row far below the block hits nothing.
+        assert!(s.code_block_at(s.height).is_none());
     }
 
     #[test]
