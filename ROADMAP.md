@@ -32,7 +32,7 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 - **md:** ✅ `parse` · ✅ `layout` (wrap/indents/callouts/tokenizer + `DocLayout` indices; cache/viewport/tables deferred as optimizations) · ✅ `highlight` (6 langs, wired)
 - **render/view:** ✅ `paint` · ✅ `render` (damage diff + sync output) · ✅ `state` (navigation) · ✅ `app` (event loop + `TerminalGuard` + panic hook)
 - 🎉 **interactive TUI works**: `glance file.md` opens an alt-screen viewer — scroll/page/`g`/`G`/`[`/`]` heading jumps/wheel, quits on `q`, restores the terminal cleanly (PTY-verified). Piped/`--pipe` → clean render. **Remaining for Phase 1 exit:** proper `cli` (lexopt) + `config` (toml), insta snapshots at 44/80/120, first-paint `--timing` gate.
-- **modes/cli:** ⬜ pipe/TTY · ⬜ `cli` (lexopt) · ⬜ `config` (toml)
+- **modes/cli:** ✅ pipe/TTY dispatch · ✅ `cli` (lexopt) · ✅ `config` (toml, CLI-overrides) · ⬜ insta snapshots (44/80/120) + `--timing` gate
 **Exit:** `glance README.md` first-paint < 80 ms; smooth scroll; clean pipe; all §5 nav keys; snapshots green at 44/80/120.
 
 ## Phase 2 — interactivity (week 3)  ⬜

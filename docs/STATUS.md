@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 1: cli (lexopt) + config (toml) · JAY-91
+**Phase:** 1 (🟨) · **Focus:** modes/cli · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `cli::parse` (lexopt): `Args` with files + `-T/-w/-s/-l/-f/--export/--no-color/--pipe/-h/-V`; short/long/equals forms; bad value or unknown flag → error (exit 2).
+- `config`: `~/.config/glance/config.toml` (`theme`, `line_numbers`, `width` — reference keys for migration) via serde+toml; missing/malformed → defaults; XDG_CONFIG_HOME or HOME path.
+- `run()` now layers **CLI → config → defaults**; `-w` threads into both the TUI (`width_override`) and pipe render. Verified: `-w 40` wraps at 40, config loads via `XDG_CONFIG_HOME`, `-V` prints, `--frob` → exit 2.
+- **111 tests green**, fmt + clippy clean (commit ac5b360).
+
+**Next (Phase 1 exit):** insta snapshot tests at widths 44/80/120 (colored + `--no-color`) + a `--timing` first-paint measurement (< 80 ms gate). Then Phase 1 is complete.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: view::state + view::app → 🎉 interactive TUI · JAY-91
 **Phase:** 1 (🟨) · **Focus:** the interactive viewer · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
