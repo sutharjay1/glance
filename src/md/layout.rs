@@ -6,8 +6,10 @@
 //! quote bars never repeat on continuation lines (plan §8). Layout produces semantic styles
 //! only; color is applied later by `paint`.
 //!
-//! Not yet handled: tables (parsed-but-skipped upstream), the `(block,width)` cache, and
-//! viewport-first slicing — those are the next layout iteration.
+//! [`layout_document`] produces a [`DocLayout`] — the lines plus heading/code/link indices the
+//! event loop needs. Deferred until a perf gate demands them: tables (parsed-but-skipped
+//! upstream), and the `(block,width)` cache + viewport-first background layout (a full-doc
+//! layout is already cheap; scrolling just slices `lines`, so no cache is needed to scroll).
 
 use crate::md::highlight;
 use crate::md::parse::{Block, CalloutKind, Inline, Item};
@@ -24,6 +26,137 @@ pub fn layout_blocks(blocks: &[Block], w: usize) -> Vec<Line> {
         out.extend(layout_block(b, w));
     }
     out
+}
+
+/// A heading entry: depth, plain text, and the line it lands on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Heading {
+    pub depth: u8,
+    pub text: String,
+    pub line: usize,
+}
+
+/// A code block's span in the laid-out document, with its source and language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeRef {
+    pub start: usize,
+    pub end: usize,
+    pub content: String,
+    pub lang: String,
+}
+
+/// A link occurrence: display text, target, and the line it appears on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkRef {
+    pub text: String,
+    pub url: String,
+    pub line: usize,
+}
+
+/// A fully laid-out document: the lines to render plus indices for search, navigation, and
+/// click hit-testing. Built once per `(document, width)`; the event loop slices `lines` for the
+/// viewport and consults the indices for `[`/`]`, `/`, `o`, `f`, and click handling.
+#[derive(Debug, Clone, Default)]
+pub struct DocLayout {
+    pub lines: Vec<Line>,
+    /// Plain text per line (parallel to `lines`), for search and hit-testing.
+    pub text: Vec<String>,
+    pub headings: Vec<Heading>,
+    pub code_blocks: Vec<CodeRef>,
+    pub links: Vec<LinkRef>,
+}
+
+impl DocLayout {
+    pub fn len(&self) -> usize {
+        self.lines.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+}
+
+/// Lay out a whole document, recording indices alongside the lines. Top-level headings and code
+/// blocks are indexed with their line positions; links are collected from every line's spans (so
+/// nested links are found too).
+pub fn layout_document(blocks: &[Block], w: usize) -> DocLayout {
+    let mut lines: Vec<Line> = Vec::new();
+    let mut headings = Vec::new();
+    let mut code_blocks = Vec::new();
+    for (i, b) in blocks.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::default());
+        }
+        let start = lines.len();
+        let bl = layout_block(b, w);
+        match b {
+            Block::Heading { level, inlines } => headings.push(Heading {
+                depth: *level,
+                text: inline_plain(inlines),
+                line: start,
+            }),
+            Block::Code { code, lang } => code_blocks.push(CodeRef {
+                start,
+                end: start + bl.len(),
+                content: code.clone(),
+                lang: lang.clone().unwrap_or_default(),
+            }),
+            _ => {}
+        }
+        lines.extend(bl);
+    }
+    let links = collect_links(&lines);
+    let text = lines.iter().map(Line::plain_text).collect();
+    DocLayout {
+        lines,
+        text,
+        headings,
+        code_blocks,
+        links,
+    }
+}
+
+/// Concatenate the plain text of an inline sequence.
+fn inline_plain(inlines: &[Inline]) -> String {
+    let mut out = String::new();
+    fn go(out: &mut String, inlines: &[Inline]) {
+        for i in inlines {
+            match i {
+                Inline::Text(s) | Inline::Code(s) => out.push_str(s),
+                Inline::Emph(v) | Inline::Strong(v) | Inline::Strike(v) => go(out, v),
+                Inline::Link { inlines, .. } => go(out, inlines),
+                Inline::Image { alt, .. } => out.push_str(alt),
+                Inline::SoftBreak | Inline::HardBreak => out.push(' '),
+            }
+        }
+    }
+    go(&mut out, inlines);
+    out
+}
+
+/// Collect link occurrences from laid-out lines, merging consecutive same-href spans into one.
+fn collect_links(lines: &[Line]) -> Vec<LinkRef> {
+    let mut links = Vec::new();
+    for (ln, line) in lines.iter().enumerate() {
+        let mut i = 0;
+        while i < line.spans.len() {
+            let Some(url) = line.spans[i].href.clone() else {
+                i += 1;
+                continue;
+            };
+            let mut text = String::new();
+            while i < line.spans.len() && line.spans[i].href.as_deref() == Some(url.as_str()) {
+                text.push_str(&line.spans[i].text);
+                i += 1;
+            }
+            links.push(LinkRef {
+                text: text.trim().to_string(),
+                url,
+                line: ln,
+            });
+        }
+    }
+    links
 }
 
 /// Lay out one block at content width `w`.
@@ -474,6 +607,57 @@ mod tests {
         let lines = layout_doc("---", 10);
         assert_eq!(lines[0].plain_text(), "──────────");
         assert!(lines[0].no_wrap);
+    }
+
+    #[test]
+    fn doclayout_indexes_headings_with_line_positions() {
+        let doc = layout_document(&parse("# One\n\nbody text\n\n## Two").blocks, 80);
+        assert_eq!(doc.headings.len(), 2);
+        assert_eq!(
+            doc.headings[0],
+            Heading {
+                depth: 1,
+                text: "One".into(),
+                line: 0
+            }
+        );
+        assert_eq!(doc.headings[1].depth, 2);
+        assert_eq!(doc.headings[1].text, "Two");
+        // "Two" heading lands on the line the index claims.
+        let l = doc.headings[1].line;
+        assert!(doc.text[l].contains("Two"));
+    }
+
+    #[test]
+    fn doclayout_indexes_code_blocks() {
+        let doc = layout_document(
+            &parse("intro\n\n```rust\nlet x = 1;\nlet y = 2;\n```").blocks,
+            80,
+        );
+        assert_eq!(doc.code_blocks.len(), 1);
+        let c = &doc.code_blocks[0];
+        assert_eq!(c.lang, "rust");
+        assert!(c.content.contains("let x = 1;"));
+        assert_eq!(c.end - c.start, 2); // two code lines
+    }
+
+    #[test]
+    fn doclayout_indexes_links_with_lines() {
+        let doc = layout_document(&parse("see [the docs](https://x.io) here").blocks, 80);
+        assert_eq!(doc.links.len(), 1);
+        assert_eq!(doc.links[0].url, "https://x.io");
+        assert_eq!(doc.links[0].text, "the docs");
+        assert_eq!(doc.links[0].line, 0);
+    }
+
+    #[test]
+    fn doclayout_text_parallels_lines() {
+        let doc = layout_document(&parse("# H\n\nsome text").blocks, 80);
+        assert_eq!(doc.text.len(), doc.lines.len());
+        for (t, l) in doc.text.iter().zip(&doc.lines) {
+            assert_eq!(*t, l.plain_text());
+        }
+        assert!(!doc.is_empty());
     }
 
     #[test]
