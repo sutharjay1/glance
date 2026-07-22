@@ -185,6 +185,66 @@ impl Fuzzy {
     }
 }
 
+/// The static help overlay (`h`/`?`): a keybinding cheat-sheet.
+pub fn help_lines() -> Vec<Line> {
+    const ROWS: &[(&str, &str)] = &[
+        ("Navigation", ""),
+        ("  j / k, ↓ / ↑, wheel", "scroll a line"),
+        ("  Space / b", "page down / up"),
+        ("  d / u", "half-page down / up"),
+        ("  g / G", "top / bottom"),
+        ("  [ / ]", "previous / next heading"),
+        ("Find & jump", ""),
+        ("  /", "search (regex); n / N cycle; Esc clears"),
+        ("  o", "table of contents"),
+        ("  :", "fuzzy heading filter"),
+        ("  f", "link picker (digits open, Enter follows)"),
+        ("  Backspace", "back (after following a local link)"),
+        ("Copy", ""),
+        ("  c / Y / p", "copy code block / document / file path"),
+        ("View", ""),
+        ("  t", "toggle dark / light theme"),
+        ("  l", "toggle code line numbers"),
+        ("  h / ?", "this help"),
+        ("  q / Ctrl-C", "quit"),
+    ];
+    let title = Line {
+        spans: vec![Span::new(
+            "glance — keybindings   (any key closes)",
+            Style {
+                bold: true,
+                role: crate::style::Role::Heading,
+                ..Default::default()
+            },
+        )],
+        no_wrap: true,
+    };
+    std::iter::once(title)
+        .chain(std::iter::once(Line::default()))
+        .chain(ROWS.iter().map(|(key, desc)| {
+            let heading = desc.is_empty();
+            let text = if heading {
+                (*key).to_string()
+            } else {
+                format!("{key:<26}{desc}")
+            };
+            let style = Style {
+                bold: heading,
+                role: if heading {
+                    crate::style::Role::Accent
+                } else {
+                    crate::style::Role::Body
+                },
+                ..Default::default()
+            };
+            Line {
+                spans: vec![Span::new(text, style)],
+                no_wrap: true,
+            }
+        }))
+        .collect()
+}
+
 /// The link picker (`f`): a numbered list of the document's links; Enter opens/follows one.
 pub struct Links {
     links: Vec<LinkRef>,
@@ -360,6 +420,19 @@ mod tests {
         f.pop();
         f.pop();
         assert_eq!(f.count(), 2); // empty query → all again
+    }
+
+    #[test]
+    fn help_lists_keybindings() {
+        let text: String = help_lines()
+            .iter()
+            .map(Line::plain_text)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("keybindings"));
+        assert!(text.contains("search"));
+        assert!(text.contains("copy"));
+        assert!(text.contains("quit"));
     }
 
     #[test]

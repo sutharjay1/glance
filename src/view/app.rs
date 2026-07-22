@@ -26,20 +26,21 @@ use crate::open::{self, classify, LinkTarget};
 use crate::paint::paint;
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key};
-use crate::theme::Theme;
+use crate::theme::{self, Theme};
 use crate::view::copy;
-use crate::view::overlays::{Fuzzy, Links, Toc};
+use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
 
-/// Input mode of the viewer: `/` search prompt, `o` TOC, `:` fuzzy filter, `f` link picker, or
-/// normal document navigation.
+/// Input mode of the viewer: `/` search prompt, `o` TOC, `:` fuzzy filter, `f` link picker,
+/// `h`/`?` help, or normal document navigation.
 enum Mode {
     Normal,
     Search(String),
     Toc(Toc),
     Fuzzy(Fuzzy),
     Links(Links),
+    Help,
 }
 
 /// Copy `text` (if any) to the clipboard, writing the OSC 52 sequence to the terminal when that
@@ -123,7 +124,7 @@ fn install_panic_hook() {
 /// width; otherwise the terminal width is used. Returns when the user quits.
 pub fn run(
     blocks: Vec<Block>,
-    theme: Theme,
+    theme_dark: bool,
     depth: ColorDepth,
     hyperlinks: bool,
     width_override: Option<usize>,
@@ -135,6 +136,9 @@ pub fn run(
         .filter(|&w| w > 0)
         .map_or(cols as usize, |w| w.min(cols as usize));
     let mut state = ViewerState::new(blocks, width, rows as usize, path);
+    // Theme is toggled at runtime (`t`); it affects paint only, never layout.
+    let mut dark = theme_dark;
+    let mut theme = if dark { theme::dark() } else { theme::light() };
 
     let _guard = TerminalGuard::enter()?;
     let mut out = io::stdout();
@@ -199,6 +203,16 @@ pub fn run(
                             Some(p) => copy_to(&mut out, &mut state, "path", Some(p))?,
                             None => state.set_toast("(stdin — no path)"),
                         },
+                        Key::Char('h') | Key::Char('?') | Key::F(1) => {
+                            mode = Mode::Help;
+                            full = true;
+                        }
+                        Key::Char('t') => {
+                            dark = !dark;
+                            theme = if dark { theme::dark() } else { theme::light() };
+                            full = true; // theme changes every color → full repaint
+                            state.set_toast(if dark { "theme: dark" } else { "theme: light" });
+                        }
                         other => match state.on_key(other) {
                             Action::Quit => break,
                             Action::Redraw => {}
@@ -300,6 +314,8 @@ pub fn run(
                             _ => mode = Mode::Links(links),
                         }
                     }
+                    // Help: any key closes it.
+                    Mode::Help => full = true,
                 }
                 draw(
                     &mut out, &state, &theme, depth, hyperlinks, &mut prev, full, &mode,
@@ -327,6 +343,7 @@ fn draw(
         Mode::Toc(toc) => Some(toc.view(state.width, state.height)),
         Mode::Fuzzy(f) => Some(f.view(state.width, state.height)),
         Mode::Links(l) => Some(l.view(state.width, state.height)),
+        Mode::Help => Some(help_lines()),
         _ => None,
     };
     let mut frame = match overlay {
@@ -387,6 +404,7 @@ fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
             l.selected_index() + 1,
             l.len()
         )),
+        Mode::Help => None, // the help overlay carries its own instructions
         // A toast takes the status row when present; otherwise the search readout.
         Mode::Normal if state.toast().is_some() => state.toast().map(String::from),
         Mode::Normal => state.search.as_ref().map(|s| {

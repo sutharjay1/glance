@@ -67,7 +67,9 @@ pub fn run(args: &[String]) -> i32 {
 
     // CLI overrides config; config overrides built-in defaults.
     let cfg = config::load();
-    let theme = theme::by_name(parsed.theme.as_deref().unwrap_or(&cfg.theme));
+    let theme_name = parsed.theme.as_deref().unwrap_or(&cfg.theme);
+    let theme = theme::by_name(theme_name);
+    let theme_dark = theme_name != "light";
     let no_color = parsed.no_color;
     let width_override = parsed.width.or((cfg.width > 0).then_some(cfg.width));
 
@@ -112,7 +114,7 @@ pub fn run(args: &[String]) -> i32 {
         };
         let blocks = md::parse::parse(&input).blocks;
         let file = Some(std::path::PathBuf::from(path));
-        return match view::app::run(blocks, theme, depth, true, width_override, file) {
+        return match view::app::run(blocks, theme_dark, depth, true, width_override, file) {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("glance: {e}");
