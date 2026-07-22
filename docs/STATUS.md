@@ -5,6 +5,20 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: fuzzy heading filter (:) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `fuzzy::score`: case-insensitive subsequence match with bonuses (word-start, contiguous run, leading position); `None` on no match — good enough for heading lists.
+- `overlays::Fuzzy`: filtered + ranked heading picker; `push`/`pop` edit the query and refilter (best score first, ties keep doc order), arrows select, `selected_line` jumps. Factored shared `heading_lines`/`window` helpers (used by both Toc + Fuzzy).
+- `app`: `Mode::Fuzzy` — `:` opens, typed chars filter live, ↑/↓ select, Enter `center_on`s + closes, Esc closes; overlay render + `:query n/m` status.
+- 9 tests (scorer + filter/rank/empty/pop). **143 total green**, fmt + clippy clean (commit 2b72b72). Reinstalled.
+
+**Next:** link picker (`f`) — list `DocLayout.links`, number/arrow select, Enter opens URL (`open`/`xdg-open`) or follows a local `.md` file; then local-file nav + `Backspace` history.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: TOC overlay (o) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
