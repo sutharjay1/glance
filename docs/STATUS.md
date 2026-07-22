@@ -5,6 +5,19 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 2: help overlay (h/?) + theme toggle (t) · JAY-92
+**Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `overlays::help_lines()`: static, sectioned keybinding cheat-sheet. `app` `Mode::Help` — `h`/`?`/`F1` opens, any key closes; full-screen render.
+- **Runtime theme toggle**: `run()` holds the theme mutably (built from a `theme_dark` bool); `t` cycles dark↔light — **repaint-only, no relayout** (proving the paint/layout split from ADR 0004) — with a toast. lib passes `theme_dark`.
+- 1 test (help content). **156 total green**, fmt + clippy clean (commit 85b954f). Reinstalled.
+
+**Next:** line numbers (`l`) — thread a `line_numbers` flag through `layout_document`→code rendering (gutter prefix reserving width); wire `-l`/config initial value. Then multi-file tabs (`Tab`), auto-reload, OSC 11 auto-theme.
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 2: copy stack (fixes weakness #3) · JAY-92
 **Phase:** 2 (🟨) · **Focus:** interactivity · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

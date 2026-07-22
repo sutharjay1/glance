@@ -40,7 +40,7 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 - ✅ **search**: `Search` core (regex + literal fallback, `n`/`N`, jump+center) + `/` prompt input mode + live reverse-video match highlighting + `query n/m` status line
 - ✅ TOC (`o`) · ✅ fuzzy filter (`:`) · ✅ link picker (`f`) + local-file nav (follow `.md`, platform opener) + `Backspace` history
 - ✅ copy stack (OSC 52 first + pbcopy/wl-copy/xclip/xsel/clip + `c`/`Y`/`p` + toasts) — **fixes weakness #3**; ⬜ click-to-copy
-- ⬜ help overlay · ⬜ theme toggle (`t`) + OSC 11 auto · ⬜ line numbers (`l`) · ⬜ tabs (`Tab`) · ⬜ auto-reload
+- ✅ help overlay (`h`/`?`) · ✅ theme toggle (`t`, runtime dark↔light) · ⬜ line numbers (`l`) · ⬜ tabs (`Tab`) · ⬜ auto-reload · ⬜ OSC 11 auto-theme
 **Exit:** parity on nav/copy/link UX; copy verified macOS, Linux X11+Wayland, SSH.
 
 ## Phase 3 — highlight + images (week 4)  ⬜
