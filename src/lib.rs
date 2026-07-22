@@ -7,6 +7,7 @@
 
 pub mod cli;
 pub mod config;
+pub mod export;
 pub mod fuzzy;
 pub mod md;
 pub mod open;
@@ -42,6 +43,25 @@ OPTIONS:
     -h, --help                  print help
     -V, --version               print version
 ";
+
+/// Read the document from the first file argument, else from piped stdin. Returns `None` (with a
+/// message on a file error) when there's no readable source. Used by the whole-document modes
+/// (slides, export) that never stream.
+fn read_source(parsed: &cli::Args, stdin_piped: bool) -> Option<String> {
+    if let Some(path) = parsed.files.first() {
+        match std::fs::read_to_string(path) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                eprintln!("glance: {path}: {e}");
+                None
+            }
+        }
+    } else if stdin_piped {
+        Some(std::io::read_to_string(std::io::stdin()).unwrap_or_default())
+    } else {
+        None
+    }
+}
 
 /// Run glance with the given CLI args (excluding `argv[0]`). Returns a process exit code.
 ///
@@ -81,9 +101,58 @@ pub fn run(args: &[String]) -> i32 {
     let stdin_piped = !std::io::stdin().is_terminal();
     let stdout_tty = std::io::stdout().is_terminal();
 
+    // Export (`--export html`): render the whole document to a self-contained HTML file on stdout
+    // and exit — no TUI, regardless of whether stdout is a terminal.
+    if let Some(fmt) = parsed.export.as_deref() {
+        if !fmt.eq_ignore_ascii_case("html") {
+            eprintln!("glance: unknown export format '{fmt}' (supported: html)");
+            return 2;
+        }
+        let Some(input) = read_source(&parsed, stdin_piped) else {
+            eprintln!("glance {VERSION}: no input file. Try --help.");
+            return 0;
+        };
+        // Dark unless the user explicitly chose the light theme.
+        print!("{}", export::to_html(&input, theme_name != "light"));
+        return 0;
+    }
+
+    // Slide mode (`-s`): present the whole document as slides. Needs the full document, so it reads
+    // its source completely (never streams).
+    if parsed.slides && stdout_tty && !parsed.pipe {
+        let Some(input) = read_source(&parsed, stdin_piped) else {
+            eprintln!("glance {VERSION}: no input file. Try --help.");
+            return 0;
+        };
+        let depth = if no_color {
+            ColorDepth::None
+        } else {
+            Capabilities::from_env(false).color
+        };
+        let theme_dark = if theme_explicit {
+            theme_dark
+        } else {
+            term::osc::detect_dark_background().unwrap_or(theme_dark)
+        };
+        let slides = view::slides::split_slides(&md::parse::parse(&input).blocks);
+        return match view::app::run_slides(slides, theme_dark, depth, true, width_override) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("glance: {e}");
+                1
+            }
+        };
+    }
+
     // Streaming mode (the `llm | glance` demo): piped stdin + interactive stdout + no file → live-
     // render stdin as it arrives. Keys still come from /dev/tty (crossterm reads the tty, not fd 0).
-    if stdin_piped && stdout_tty && !parsed.pipe && !parsed.timing && parsed.files.is_empty() {
+    if stdin_piped
+        && stdout_tty
+        && !parsed.pipe
+        && !parsed.timing
+        && !parsed.slides
+        && parsed.files.is_empty()
+    {
         let depth = if no_color {
             ColorDepth::None
         } else {
@@ -114,24 +183,18 @@ pub fn run(args: &[String]) -> i32 {
         };
     }
 
-    // Document source: a file argument, else piped stdin (`glance < x.md`, `cat x | glance | cat`).
-    // The interactive-stdin case (piped stdin + TTY stdout) was handled by the streaming branch.
-    let (input, has_file) = if let Some(path) = parsed.files.first() {
-        match std::fs::read_to_string(path) {
-            Ok(s) => (s, true),
-            Err(e) => {
-                eprintln!("glance: {path}: {e}");
-                return 1;
-            }
-        }
-    } else if stdin_piped {
-        (
-            std::io::read_to_string(std::io::stdin()).unwrap_or_default(),
-            false,
-        )
-    } else {
+    // Remaining paths (timing / interactive / pipe) need a file. Piped stdin with an interactive
+    // stdout was already taken by the streaming branch; `glance < x.md` in a terminal streams too.
+    let Some(path) = parsed.files.first() else {
         eprintln!("glance {VERSION}: no input file. Try --help.");
         return 0;
+    };
+    let input = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("glance: {path}: {e}");
+            return 1;
+        }
     };
 
     // `--timing`: measure launch→first-paint (parse + viewport layout) and exit. This is the
@@ -156,8 +219,7 @@ pub fn run(args: &[String]) -> i32 {
 
     // Interactive TUI when we own a terminal, weren't asked to pipe, and have file(s) to open.
     // (Interactive stdin is the streaming case, already handled above.)
-    if is_tty && !parsed.pipe && has_file {
-        let path = &parsed.files[0];
+    if is_tty && !parsed.pipe {
         let depth = if no_color {
             ColorDepth::None
         } else {

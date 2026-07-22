@@ -48,9 +48,11 @@ Term layer → parse → layout → paint → render → navigation → pipe mod
 - ✅ image ladder: capability probe (`ImageProtocol`) · half-block renderer (`▀` fg/bg pixels; `Style` gained `fg`/`bg` RGB) · Kitty encoder (chunked base64 PNG APC) · standalone-image detection (`ImageRef`) · **background fetch/decode/render worker** (`view::images`: `ureq` http/https + fs local, decode, half-block, cached by (url,cols)) · **relayout-on-ready** (placeholder→N rows via `layout_document_with` + resolved-images map; scroll clamped). Kitty *display* integration (raw passthrough + row reservation) is a documented fast-follow — encoder is done+tested.
 **Exit met:** 4.1 MB total (2.2× < mdterm), first-paint **0.65 ms** / **13 ms** (5k-line) — all heavy work off the hot path.
 
-## Phase 4 — differentiators (week 5)  🟨
-- ✅ **streaming stdin** (`src/stream.rs`): the `llm | glance` live-render demo. Reader thread → channel; `StreamState.append` re-parses only the active tail past the last **fence-aware** stable boundary (cached stable prefix); auto-follow the bottom, scroll-up pauses with a `▼ paused (G to follow)` pill, `G`/End resumes. Keys come from `/dev/tty` (crossterm), so piped stdin + interactive input coexist. Also wired plain **stdin pipe-mode** (`glance < x.md`, `cat x | glance | cat`). · ⬜ slide mode (`-s`) · ⬜ HTML export (`--export html`)
-**Exit:** `llm | glance` renders live + auto-follows; slides navigate; `--export html` produces a standalone themed file.
+## Phase 4 — differentiators (week 5)  ✅
+- ✅ **streaming stdin** (`src/stream.rs`): the `llm | glance` live-render demo. Reader thread → channel; `StreamState.append` re-parses only the active tail past the last **fence-aware** stable boundary; auto-follow the bottom, scroll-up pauses with a `▼ paused (G to follow)` pill, `G`/End resumes. Keys come from `/dev/tty` (crossterm), so piped stdin + interactive input coexist.
+- ✅ **slide mode** (`-s`, `view::slides`): split on `---` (pure `split_slides` + clamped `Slides` nav); one slide/screen, vertically centered, `slide n/N` footer; `→`/Space/l/j next, `←`/h/k/b prev, g/G ends.
+- ✅ **HTML export** (`--export html`, `src/export.rs`): pulldown-cmark HTML + **inlined** theme CSS (brand accent `#FF5800`, `color-scheme` dark/light) → a single self-contained file to stdout, no external refs.
+**Exit met:** `llm | glance` renders live + auto-follows; slides navigate; `--export html` produces a standalone themed file.
 Streaming stdin + follow (the launch demo), slide mode, HTML export.
 **Exit:** `llm | glance` renders live + auto-follows; slides navigate; `--export html` works.
 

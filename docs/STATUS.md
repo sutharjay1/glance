@@ -5,6 +5,18 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 4: slide mode + HTML export → **PHASE 4 COMPLETE** · JAY-94
+**Phase:** 4 (✅) · **Focus:** differentiators · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- **Slide mode** (`-s`): `view::slides::split_slides` (pure — splits blocks on `Block::ThematicBreak`, drops empties) + `Slides` nav (clamped next/prev/first/last) — 4 unit tests. `app::run_slides` is a minimal event loop: lay out the current slide, vertically center it, footer `slide n/N`; `→`/Space/l/j/↓ next, `←`/h/k/b/↑ prev, g/Home first, G/End last, q quits. Full repaint per transition. Wired in `lib.rs` (`-s` + interactive stdout).
+- **HTML export** (`--export html`): new `src/export.rs::to_html` — pulldown-cmark's `push_html` (enabled the crate's `html` feature) on the original markdown, wrapped in a `<!doctype html>` doc with an **inlined `<style>`** derived from the theme (brand accent `#FF5800`, `color-scheme` dark/light, code/table/blockquote styling). Fully self-contained (no external links/scripts/fonts). Printed to stdout, exits — works regardless of TTY. 3 unit tests (self-contained doc, tables+code+accent, light/dark switch).
+- **Bug caught + fixed:** an opportunistic "read stdin as document" in the final input-resolution path made the `no_args_does_not_panic` test **block on stdin** in non-EOF harnesses. Reverted it — `glance < x.md` / `cat x | glance` in a terminal already stream (stdout-TTY-gated branch), so only the rare fully-piped `cat x | glance | cat` reverts to prior behavior (no regression).
+- **202 total green** (+4 slides, +3 export), fmt + clippy clean, reinstalled. Binary 4.26 MB (pulldown `html` feature).
+
+**PHASE 4 COMPLETE** — streaming stdin + slide mode + HTML export. → Phase 5 (JAY-95): ports (math `$…$`→unicode, mermaid, json viewer) + launch (README parity/benchmark tables, cargo-dist, crates.io).
+
+---
+
 ## 2026-07-22 — Phase 4: streaming stdin (the llm|glance demo) · JAY-94
 **Phase:** 4 (🟨) · **Focus:** differentiators · **Branch:** `feature/jay-91-phase-1-viewer-core`
 

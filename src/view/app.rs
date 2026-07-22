@@ -35,6 +35,7 @@ use crate::view::highlighter::{blocks_by_priority, HighlightRequest, Highlighter
 use crate::view::images::{ImageLoader, ImageRequest};
 use crate::view::overlays::{help_lines, Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
+use crate::view::slides::Slides;
 use crate::view::state::{Action, ViewerState};
 use crate::view::tabs::Tabs;
 use crate::view::watch::{Debouncer, FileWatcher};
@@ -628,6 +629,103 @@ pub fn run(
             _ => {}
         }
     }
+    Ok(())
+}
+
+/// Present `slides` one at a time (slide mode, `-s`). Navigation keys advance/retreat slides; each
+/// slide is laid out like a mini-document and vertically centered. Full repaint per transition.
+pub fn run_slides(
+    slides: Vec<Vec<Block>>,
+    theme_dark: bool,
+    depth: ColorDepth,
+    hyperlinks: bool,
+    width_override: Option<usize>,
+) -> io::Result<()> {
+    install_panic_hook();
+    let (cols, rows) = terminal::size().unwrap_or((80, 24));
+    let mut width = width_override
+        .filter(|&w| w > 0)
+        .map_or(cols as usize, |w| w.min(cols as usize));
+    let mut height = rows as usize;
+    let mut deck = Slides::new(slides);
+    let theme = if theme_dark {
+        theme::dark()
+    } else {
+        theme::light()
+    };
+
+    let _guard = TerminalGuard::enter()?;
+    let mut out = io::stdout();
+    draw_slide(&mut out, &deck, width, height, &theme, depth, hyperlinks)?;
+
+    loop {
+        match map_event(event::read()?) {
+            Some(Event::Resize { cols, rows }) => {
+                width = width_override
+                    .filter(|&w| w > 0)
+                    .map_or(cols as usize, |w| w.min(cols as usize));
+                height = rows as usize;
+            }
+            Some(Event::Key(k)) => match k {
+                Key::Char('q') | Key::Ctrl('c') => break,
+                Key::Right
+                | Key::Char(' ')
+                | Key::Char('l')
+                | Key::Char('j')
+                | Key::Down
+                | Key::PageDown => deck.next(),
+                Key::Left
+                | Key::Char('h')
+                | Key::Char('k')
+                | Key::Char('b')
+                | Key::Up
+                | Key::PageUp => deck.prev(),
+                Key::Char('g') | Key::Home => deck.first(),
+                Key::Char('G') | Key::End => deck.last(),
+                _ => continue,
+            },
+            _ => continue,
+        }
+        draw_slide(&mut out, &deck, width, height, &theme, depth, hyperlinks)?;
+    }
+    Ok(())
+}
+
+/// Lay out the current slide, vertically center it, and paint it with a `slide n/N` footer.
+fn draw_slide(
+    out: &mut io::Stdout,
+    deck: &Slides,
+    width: usize,
+    height: usize,
+    theme: &Theme,
+    depth: ColorDepth,
+    hyperlinks: bool,
+) -> io::Result<()> {
+    let doc = crate::md::layout::layout_document(deck.current(), width, false);
+    let content_rows = height.saturating_sub(1); // reserve the last row for the footer
+    let mut frame: Vec<String> = Vec::with_capacity(height);
+    // Vertically center a short slide.
+    let pad = content_rows.saturating_sub(doc.lines.len()) / 2;
+    for _ in 0..pad {
+        frame.push(String::new());
+    }
+    for line in &doc.lines {
+        frame.push(paint(line, theme, depth, hyperlinks));
+    }
+    frame.truncate(content_rows);
+    frame.resize(content_rows, String::new());
+    let mut footer = format!(
+        "slide {}/{}  · →/Space next · ←/b prev · g/G ends · q quit",
+        deck.index() + 1,
+        deck.len()
+    );
+    if footer.chars().count() > width {
+        footer = footer.chars().take(width).collect();
+    }
+    frame.push(footer);
+    // Full repaint each transition (slides change wholesale) — no damage diff needed.
+    queue!(out, crossterm::style::Print(render(None, &frame)))?;
+    out.flush()?;
     Ok(())
 }
 

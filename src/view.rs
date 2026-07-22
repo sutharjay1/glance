@@ -9,6 +9,7 @@ pub mod images;
 pub mod overlays;
 pub mod render;
 pub mod search;
+pub mod slides;
 pub mod state;
 pub mod tabs;
 pub mod watch;
