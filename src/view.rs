@@ -3,6 +3,7 @@
 //! it can be snapshot-tested without a terminal.
 
 pub mod app;
+pub mod copy;
 pub mod overlays;
 pub mod render;
 pub mod search;

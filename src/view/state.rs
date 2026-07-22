@@ -41,6 +41,8 @@ pub struct ViewerState {
     path: Option<PathBuf>,
     /// Back-navigation stack of `(path, scroll)` for following and returning from local links.
     history: Vec<(PathBuf, usize)>,
+    /// A transient status message (e.g. "copied document"), shown until the next keypress.
+    toast: Option<String>,
 }
 
 impl ViewerState {
@@ -55,7 +57,46 @@ impl ViewerState {
             search: None,
             path,
             history: Vec::new(),
+            toast: None,
         }
+    }
+
+    // --- Copy sources + toast ---------------------------------------------
+
+    pub fn toast(&self) -> Option<&str> {
+        self.toast.as_deref()
+    }
+
+    pub fn set_toast(&mut self, msg: impl Into<String>) {
+        self.toast = Some(msg.into());
+    }
+
+    pub fn clear_toast(&mut self) {
+        self.toast = None;
+    }
+
+    /// The whole document as plain text (for `Y`).
+    pub fn document_text(&self) -> String {
+        self.doc.text.join("\n")
+    }
+
+    /// The source of the code block nearest the viewport top (for `c`).
+    pub fn nearest_code_block(&self) -> Option<String> {
+        self.doc
+            .code_blocks
+            .iter()
+            .min_by_key(|c| (c.start as isize - self.top as isize).unsigned_abs())
+            .map(|c| c.content.clone())
+    }
+
+    /// The current file's absolute path as a string (for `p`), or `None` for stdin.
+    pub fn file_path_string(&self) -> Option<String> {
+        self.path.as_ref().map(|p| {
+            std::fs::canonicalize(p)
+                .unwrap_or_else(|_| p.clone())
+                .to_string_lossy()
+                .into_owned()
+        })
     }
 
     /// The directory of the current file, for resolving relative links.
@@ -381,5 +422,29 @@ mod tests {
         s.run_search("target");
         assert_eq!(s.run_search(""), 0);
         assert!(s.search.is_none());
+    }
+
+    #[test]
+    fn document_text_and_toast() {
+        let mut s = state("# H\n\nbody text", 80, 10);
+        assert!(s.document_text().contains("body text"));
+        assert_eq!(s.toast(), None);
+        s.set_toast("copied");
+        assert_eq!(s.toast(), Some("copied"));
+        s.clear_toast();
+        assert_eq!(s.toast(), None);
+    }
+
+    #[test]
+    fn nearest_code_block_by_proximity() {
+        let s = state("intro\n\n```\nAAA\n```\n\nmid\n\n```\nBBB\n```", 80, 5);
+        // top = 0 → nearest is the first code block
+        assert!(s.nearest_code_block().unwrap().contains("AAA"));
+    }
+
+    #[test]
+    fn file_path_none_for_stdin() {
+        let s = state("x", 80, 4);
+        assert_eq!(s.file_path_string(), None);
     }
 }

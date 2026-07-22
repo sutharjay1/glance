@@ -27,6 +27,7 @@ use crate::paint::paint;
 use crate::term::caps::ColorDepth;
 use crate::term::input::{map_event, Event, Key};
 use crate::theme::Theme;
+use crate::view::copy;
 use crate::view::overlays::{Fuzzy, Links, Toc};
 use crate::view::render::{build_frame, render, Frame};
 use crate::view::state::{Action, ViewerState};
@@ -39,6 +40,27 @@ enum Mode {
     Toc(Toc),
     Fuzzy(Fuzzy),
     Links(Links),
+}
+
+/// Copy `text` (if any) to the clipboard, writing the OSC 52 sequence to the terminal when that
+/// path is used, and set a toast describing the outcome. `what` names the thing copied.
+fn copy_to(
+    out: &mut io::Stdout,
+    state: &mut ViewerState,
+    what: &str,
+    text: Option<String>,
+) -> io::Result<()> {
+    let Some(text) = text else {
+        state.set_toast(format!("no {what} here"));
+        return Ok(());
+    };
+    let result = copy::copy(&text);
+    if let Some(seq) = result.as_ref().and_then(|c| c.osc52.as_ref()) {
+        write!(out, "{seq}")?;
+        out.flush()?;
+    }
+    state.set_toast(copy::toast(what, result.as_ref()));
+    Ok(())
 }
 
 /// Act on a chosen link: open web/other URLs externally; follow local markdown in-app, open other
@@ -140,7 +162,8 @@ pub fn run(
             }
             Some(Event::Key(k)) => {
                 let mut full = false;
-                // Take mode out so we can reassign it inside the match.
+                state.clear_toast(); // any keypress dismisses a transient toast
+                                     // Take mode out so we can reassign it inside the match.
                 match std::mem::replace(&mut mode, Mode::Normal) {
                     Mode::Normal => match k {
                         Key::Char('/') => mode = Mode::Search(String::new()),
@@ -164,6 +187,18 @@ pub fn run(
                                 full = true;
                             }
                         }
+                        Key::Char('c') => {
+                            let text = state.nearest_code_block();
+                            copy_to(&mut out, &mut state, "code block", text)?;
+                        }
+                        Key::Char('Y') => {
+                            let text = Some(state.document_text());
+                            copy_to(&mut out, &mut state, "document", text)?;
+                        }
+                        Key::Char('p') => match state.file_path_string() {
+                            Some(p) => copy_to(&mut out, &mut state, "path", Some(p))?,
+                            None => state.set_toast("(stdin — no path)"),
+                        },
                         other => match state.on_key(other) {
                             Action::Quit => break,
                             Action::Redraw => {}
@@ -352,6 +387,8 @@ fn status_line(state: &ViewerState, mode: &Mode) -> Option<String> {
             l.selected_index() + 1,
             l.len()
         )),
+        // A toast takes the status row when present; otherwise the search readout.
+        Mode::Normal if state.toast().is_some() => state.toast().map(String::from),
         Mode::Normal => state.search.as_ref().map(|s| {
             if s.is_empty() {
                 format!("/{}  no matches", s.query)
