@@ -122,7 +122,7 @@ const RELOAD_DEBOUNCE: Duration = Duration::from_millis(120);
 /// How long to block for terminal input between watcher checks (only when watching files).
 const POLL_TICK: Duration = Duration::from_millis(50);
 /// Blank rows between the document content and the bottom status/hint bar (breathing room).
-const BAR_GAP: usize = 2;
+const BAR_GAP: usize = 1;
 /// Total bottom rows reserved for the bar + its gap (content viewport = terminal rows − this).
 const BAR_RESERVED: usize = BAR_GAP + 1;
 
