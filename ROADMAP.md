@@ -26,7 +26,7 @@ Ground the README comparison table and de-risk the vendored modules.
 - ✅ CI (`.github/workflows/ci.yml`): fmt/clippy/test, ubuntu+macos gating, windows non-gating (insta/PTY wired in Phase 1)
 - ◐ Deps added incrementally per phase (unicode-width now) to keep builds fast; `cargo-dist` config deferred to Phase 5 (launch)
 
-## Phase 1 — viewer core (week 1–2)  🟨  ← risky foundation
+## Phase 1 — viewer core (week 1–2)  ✅ (2026-07-22) — interactive TUI, 112 tests + 4 snapshot goldens, 35× faster than mdterm
 Term layer → parse → layout → paint → render → navigation → pipe mode → config. Built one TDD module per loop iteration.
 - **term:** ✅ `caps` · ✅ `ansi` (downsampling) · ✅ `osc` (8/52/11) · ✅ `input` (crossterm→Event map) · ⬜ `TerminalGuard` (with event-loop wiring, PTY-tested)
 - **md:** ✅ `parse` · ✅ `layout` (wrap/indents/callouts/tokenizer + `DocLayout` indices; cache/viewport/tables deferred as optimizations) · ✅ `highlight` (6 langs, wired)

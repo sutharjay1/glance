@@ -5,6 +5,23 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — ✅ Phase 1 COMPLETE (viewer core) · JAY-91
+**Phase:** 1 → **done** · **Branch:** `feature/jay-91-phase-1-viewer-core` (renamed from jay-89)
+
+- Shipped insta snapshot goldens (`tests/render_snapshots.rs` + 4 `.snap`) of the full pipeline over a curated fixture at widths 44/80/120 (plain) + one colored.
+- The snapshot **immediately caught a real bug**: the ` (url)` suffix was appended by paint *after* wrapping → line overflow in pipe/no-OSC8 output. Fixed by baking suffixes into the block tree *before* layout (`parse::with_url_suffixes`); paint now only decides OSC 8. Width-44 invariant verified.
+- **Phase 1 exit criteria all met:** first-paint **0.92 ms** (< 80 ms), smooth scroll, clean pipe, movement keys (`j/k/Space/b/d/u/g/G/[/]`/wheel), snapshots green at 44/80/120.
+- **Perf validated head-to-head:** glance 1.7 ms vs mdterm 59.1 ms (35×), 831 KB vs 9 MB (11×).
+- **113 tests + 4 goldens green**, fmt + clippy clean (commit ab51789). Installed to `~/.cargo/bin/glance`.
+
+**Phase 1 modules (all ✅):** term (caps/ansi/osc/input) · md (parse/layout+DocLayout/highlight) · style · paint · theme · view (render/state/app+TerminalGuard) · cli · config.
+
+**Next:** Phase 2 (JAY-92) — search (`/`), TOC (`o`), fuzzy (`:`), link picker (`f`) + local-file nav, copy stack (OSC 52 + fallbacks + `p` + click), help, theme toggle + OSC 11, line numbers, tabs, auto-reload. Continuing straight through (user override: don't stop at phase boundaries).
+
+**Blockers:** none.
+
+---
+
 ## 2026-07-22 — Phase 1: cli (lexopt) + config (toml) · JAY-91
 **Phase:** 1 (🟨) · **Focus:** modes/cli · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
