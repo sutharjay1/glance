@@ -53,6 +53,16 @@ pub struct LinkRef {
     pub line: usize,
 }
 
+/// A standalone image (a paragraph that is just `![alt](url)`). Rendered as a placeholder line
+/// range `[start, end)` until the background worker fetches, decodes, and patches it in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageRef {
+    pub start: usize,
+    pub end: usize,
+    pub url: String,
+    pub alt: String,
+}
+
 /// A fully laid-out document: the lines to render plus indices for search, navigation, and
 /// click hit-testing. Built once per `(document, width)`; the event loop slices `lines` for the
 /// viewport and consults the indices for `[`/`]`, `/`, `o`, `f`, and click handling.
@@ -64,6 +74,8 @@ pub struct DocLayout {
     pub headings: Vec<Heading>,
     pub code_blocks: Vec<CodeRef>,
     pub links: Vec<LinkRef>,
+    /// Standalone images, in document order — the background image worker fetches and patches these.
+    pub images: Vec<ImageRef>,
 }
 
 impl DocLayout {
@@ -83,12 +95,28 @@ pub fn layout_document(blocks: &[Block], w: usize, line_numbers: bool) -> DocLay
     let mut lines: Vec<Line> = Vec::new();
     let mut headings = Vec::new();
     let mut code_blocks = Vec::new();
+    let mut images = Vec::new();
     for (i, b) in blocks.iter().enumerate() {
         if i > 0 {
             lines.push(Line::default());
         }
         let start = lines.len();
-        let bl = layout_block(b, w, line_numbers);
+        // A paragraph that is just `![alt](url)` becomes an image placeholder + an ImageRef the
+        // background worker later replaces; everything else lays out normally.
+        let bl = match b {
+            Block::Paragraph(inls) if standalone_image(inls).is_some() => {
+                let (url, alt) = standalone_image(inls).unwrap();
+                let ph = image_placeholder(&alt, &url, w);
+                images.push(ImageRef {
+                    start,
+                    end: start + ph.len(),
+                    url,
+                    alt,
+                });
+                ph
+            }
+            _ => layout_block(b, w, line_numbers),
+        };
         match b {
             Block::Heading { level, inlines } => headings.push(Heading {
                 depth: *level,
@@ -113,7 +141,42 @@ pub fn layout_document(blocks: &[Block], w: usize, line_numbers: bool) -> DocLay
         headings,
         code_blocks,
         links,
+        images,
     }
+}
+
+/// If `inlines` is a single image with only surrounding whitespace/breaks, return `(url, alt)`.
+/// This is the "standalone image" case worth rendering as a real picture (vs. an inline icon).
+fn standalone_image(inlines: &[Inline]) -> Option<(String, String)> {
+    let mut found: Option<(String, String)> = None;
+    for inl in inlines {
+        match inl {
+            Inline::Image { url, alt } => {
+                if found.is_some() {
+                    return None; // more than one image → treat as ordinary text flow
+                }
+                found = Some((url.clone(), alt.clone()));
+            }
+            Inline::Text(t) if t.trim().is_empty() => {}
+            Inline::SoftBreak | Inline::HardBreak => {}
+            _ => return None, // any real text/other inline → not standalone
+        }
+    }
+    found
+}
+
+/// One-line dim placeholder shown until an image is fetched and rendered, truncated to width.
+fn image_placeholder(alt: &str, url: &str, w: usize) -> Vec<Line> {
+    let label = if alt.trim().is_empty() {
+        format!("⌛ image: {url}")
+    } else {
+        format!("⌛ image: {alt} ({url})")
+    };
+    let spans = truncate_spans(vec![Span::new(label, Style::role(Role::Dim))], w);
+    vec![Line {
+        spans,
+        no_wrap: true,
+    }]
 }
 
 /// Concatenate the plain text of an inline sequence.
@@ -546,6 +609,26 @@ mod tests {
 
     fn layout_doc(md: &str, w: usize) -> Vec<Line> {
         layout_blocks(&parse(md).blocks, w, false)
+    }
+
+    #[test]
+    fn standalone_image_becomes_placeholder_and_imageref() {
+        let doc = layout_document(&parse("# H\n\n![a cat](cat.png)\n\ntext").blocks, 80, false);
+        assert_eq!(doc.images.len(), 1);
+        let img = &doc.images[0];
+        assert_eq!(img.url, "cat.png");
+        assert_eq!(img.alt, "a cat");
+        // The placeholder occupies its recorded line range and reads as a dim image line.
+        assert_eq!(img.end - img.start, 1);
+        assert!(doc.lines[img.start].plain_text().contains("image: a cat"));
+        assert!(doc.lines[img.start].plain_text().contains("cat.png"));
+    }
+
+    #[test]
+    fn inline_image_in_text_is_not_a_standalone_image() {
+        // An image mixed with real text stays in the paragraph flow (alt text), not an ImageRef.
+        let doc = layout_document(&parse("see ![x](y.png) here").blocks, 80, false);
+        assert!(doc.images.is_empty());
     }
 
     /// No line may exceed the width (the core wrap invariant).

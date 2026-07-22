@@ -5,6 +5,17 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 3: Kitty renderer + image node detection · JAY-93
+**Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- `term::images::kitty_png` — Kitty graphics-protocol encoder: base64 the PNG bytes, chunk into ≤4096-byte pieces, first chunk carries `a=T,f=100,m=…`, continuation chunks `m=1`/`m=0`, each framed `ESC_G … ESC\`. Pure/tested (single-chunk framing, multi-chunk `m` flag, empty input). Renderer choice will follow the probed `ImageProtocol` (Kitty → this; else `half_block`; None → placeholder).
+- `md::layout`: standalone-image detection — a paragraph that is just `![alt](url)` (only whitespace/breaks around one image) becomes a dim `⌛ image: alt (url)` **placeholder line** + an `ImageRef {start,end,url,alt}` recorded in `DocLayout.images` (like `code_blocks`). An image mixed with real text stays inline (alt in the flow), not an ImageRef. 2 tests.
+- **187 total green**, fmt + clippy clean. Binary unchanged (worker not wired yet).
+
+**Next (closes Phase 3):** the background image worker — add `ureq` (the +1.2 MB TLS per ADR 0006), reuse the highlighter's producer/mpsc/drain pattern: fetch (ureq http/https, fs for local resolved against the doc dir) → decode → render (half_block at target cols, or Kitty) → patch. Because a rendered image is N lines but the placeholder is 1, image-ready triggers a **re-layout** with resolved images injected (indices recomputed, scroll clamped) rather than an in-place span patch. Enqueue visible images first; cache decoded result. first-paint never blocks on fetch. Then mark JAY-93 Done → Phase 4.
+
+---
+
 ## 2026-07-22 — Phase 3: image ladder foundation (probe + half-block) · JAY-93
 **Phase:** 3 (🟨) · **Focus:** highlight + images · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
