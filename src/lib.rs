@@ -5,6 +5,8 @@
 //! from the plan — the entry point holds no logic. See `ROADMAP.md` for the phase plan and
 //! `docs/adr/` for the decisions behind this structure.
 
+pub mod cli;
+pub mod config;
 pub mod md;
 pub mod paint;
 pub mod style;
@@ -45,25 +47,32 @@ OPTIONS:
 /// mode** (piped/`--no-color`/`--pipe` → clean plain or styled text). Full CLI parsing,
 /// multi-file, `--export`, and the streaming stdin path are later modules.
 pub fn run(args: &[String]) -> i32 {
-    if args.iter().any(|a| a == "-V" || a == "--version") {
+    let parsed = match cli::parse(args) {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("glance: {e}");
+            return 2;
+        }
+    };
+    if parsed.version {
         println!("glance {VERSION}");
         return 0;
     }
-    if args.iter().any(|a| a == "-h" || a == "--help") {
+    if parsed.help {
         print!("{HELP}");
         return 0;
     }
 
-    let no_color = args.iter().any(|a| a == "--no-color");
-    let force_pipe = args.iter().any(|a| a == "--pipe");
-    let theme_name = flag_value(args, "-T", "--theme").unwrap_or("dark");
-    let theme = theme::by_name(theme_name);
+    // CLI overrides config; config overrides built-in defaults.
+    let cfg = config::load();
+    let theme = theme::by_name(parsed.theme.as_deref().unwrap_or(&cfg.theme));
+    let no_color = parsed.no_color;
+    let width_override = parsed.width.or((cfg.width > 0).then_some(cfg.width));
 
-    let Some(path) = args.iter().find(|a| !a.starts_with('-')) else {
+    let Some(path) = parsed.files.first() else {
         eprintln!("glance {VERSION}: no input file. Try --help.");
         return 0;
     };
-
     let input = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -75,14 +84,14 @@ pub fn run(args: &[String]) -> i32 {
     let is_tty = std::io::stdout().is_terminal();
 
     // Interactive TUI when we own a terminal and weren't asked to pipe.
-    if is_tty && !force_pipe {
+    if is_tty && !parsed.pipe {
         let depth = if no_color {
             ColorDepth::None
         } else {
             Capabilities::from_env(false).color
         };
         let blocks = md::parse::parse(&input).blocks;
-        return match view::app::run(blocks, theme, depth, true) {
+        return match view::app::run(blocks, theme, depth, true, width_override) {
             Ok(()) => 0,
             Err(e) => {
                 eprintln!("glance: {e}");
@@ -97,19 +106,12 @@ pub fn run(args: &[String]) -> i32 {
     } else {
         Capabilities::from_env(false).color
     };
+    let width = width_override.filter(|&w| w > 0).unwrap_or(80);
     print!(
         "{}",
-        paint::render_document(&input, 80, &theme, depth, false)
+        paint::render_document(&input, width, &theme, depth, false)
     );
     0
-}
-
-/// Read the value of a `-x`/`--long` flag (space-separated form), if present.
-fn flag_value<'a>(args: &'a [String], short: &str, long: &str) -> Option<&'a str> {
-    args.iter()
-        .position(|a| a == short || a == long)
-        .and_then(|i| args.get(i + 1))
-        .map(String::as_str)
 }
 
 #[cfg(test)]

@@ -64,16 +64,21 @@ fn install_panic_hook() {
     }));
 }
 
-/// Run the interactive viewer over `blocks`. Returns when the user quits.
+/// Run the interactive viewer over `blocks`. `width_override` (non-zero) fixes the content
+/// width; otherwise the terminal width is used. Returns when the user quits.
 pub fn run(
     blocks: Vec<Block>,
     theme: Theme,
     depth: ColorDepth,
     hyperlinks: bool,
+    width_override: Option<usize>,
 ) -> io::Result<()> {
     install_panic_hook();
     let (cols, rows) = terminal::size().unwrap_or((80, 24));
-    let mut state = ViewerState::new(blocks, cols as usize, rows as usize);
+    let width = width_override
+        .filter(|&w| w > 0)
+        .map_or(cols as usize, |w| w.min(cols as usize));
+    let mut state = ViewerState::new(blocks, width, rows as usize);
 
     let _guard = TerminalGuard::enter()?;
     let mut out = io::stdout();
