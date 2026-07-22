@@ -18,6 +18,12 @@ pub enum Role {
     Rule,
     /// De-emphasized text (image alt, ` (url)` suffixes).
     Dim,
+    // Code-token roles (set by `md::highlight`).
+    Keyword,
+    Str,
+    Comment,
+    Number,
+    Function,
 }
 
 /// Semantic style of a span.

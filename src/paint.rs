@@ -125,14 +125,18 @@ fn pick_color(span: &Span, theme: &Theme) -> Rgb {
     if span.href.is_some() {
         return theme.link;
     }
-    if span.style.code {
-        return theme.code;
-    }
     match span.style.role {
         Role::Heading => theme.heading,
         Role::Marker | Role::Accent => theme.accent,
         Role::Dim => theme.dim,
         Role::Rule => theme.rule,
+        Role::Keyword => theme.kw,
+        Role::Str => theme.string,
+        Role::Comment => theme.comment,
+        Role::Number => theme.number,
+        Role::Function => theme.function,
+        // Plain code text (highlighter's default) vs. ordinary body text.
+        Role::Body if span.style.code => theme.code,
         Role::Body => theme.body,
     }
 }
@@ -228,6 +232,20 @@ mod tests {
         let without = paint(&l, &dark(), ColorDepth::TrueColor, false);
         assert!(!with_osc.contains("\x1b]8;;"));
         assert!(!without.contains("(https://x.io)"));
+    }
+
+    #[test]
+    fn highlighted_code_colors_reach_output() {
+        // Full chain: layout invokes highlight → paint colors the tokens.
+        let out = render_document(
+            "```rust\nlet x = 42;\n```",
+            80,
+            &dark(),
+            ColorDepth::TrueColor,
+            false,
+        );
+        assert!(out.contains("203;166;247"), "keyword mauve missing"); // `let`
+        assert!(out.contains("250;179;135"), "number peach missing"); // `42`
     }
 
     #[test]

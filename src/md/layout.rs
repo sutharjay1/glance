@@ -9,6 +9,7 @@
 //! Not yet handled: tables (parsed-but-skipped upstream), the `(block,width)` cache, and
 //! viewport-first slicing — those are the next layout iteration.
 
+use crate::md::highlight;
 use crate::md::parse::{Block, CalloutKind, Inline, Item};
 use crate::style::{Line, Role, Span, Style};
 use crate::text::width;
@@ -37,16 +38,28 @@ pub fn layout_block(block: &Block, w: usize) -> Vec<Line> {
             wrap_inlines(inlines, style, w, &empty(), &empty())
         }
         Block::Paragraph(inlines) => wrap_inlines(inlines, Style::default(), w, &empty(), &empty()),
-        Block::Code { code, .. } => code
-            .lines()
-            .map(|l| Line {
-                spans: vec![Span::new(
-                    truncate(l, w),
-                    Style::role(Role::Body).with_code(),
-                )],
-                no_wrap: true,
-            })
-            .collect(),
+        Block::Code { code, lang } => {
+            let lang = lang.as_deref().unwrap_or("");
+            if highlight::supported(lang) {
+                highlight::highlight(code, lang)
+                    .into_iter()
+                    .map(|spans| Line {
+                        spans: truncate_spans(spans, w),
+                        no_wrap: true,
+                    })
+                    .collect()
+            } else {
+                code.lines()
+                    .map(|l| Line {
+                        spans: vec![Span::new(
+                            truncate(l, w),
+                            Style::role(Role::Body).with_code(),
+                        )],
+                        no_wrap: true,
+                    })
+                    .collect()
+            }
+        }
         Block::ThematicBreak => vec![Line {
             spans: vec![Span::new("─".repeat(w.max(1)), Style::role(Role::Rule))],
             no_wrap: true,
@@ -294,6 +307,26 @@ fn starts_ws(s: &str) -> bool {
 
 fn ends_ws(s: &str) -> bool {
     s.ends_with(|c: char| c.is_whitespace())
+}
+
+/// Truncate a styled line to at most `w` display cells (for highlighted no-wrap code).
+fn truncate_spans(spans: Vec<Span>, w: usize) -> Vec<Span> {
+    let mut acc = 0;
+    let mut out = Vec::new();
+    for mut sp in spans {
+        let sw = width(&sp.text);
+        if acc + sw <= w {
+            acc += sw;
+            out.push(sp);
+        } else {
+            sp.text = truncate(&sp.text, w - acc);
+            if !sp.text.is_empty() {
+                out.push(sp);
+            }
+            break;
+        }
+    }
+    out
 }
 
 /// Truncate `s` to at most `w` display cells (for no-wrap code lines).
