@@ -261,6 +261,8 @@ pub fn layout_block(block: &Block, w: usize, line_numbers: bool) -> Vec<Line> {
         Block::Code { code, lang } => {
             layout_code(code, lang.as_deref().unwrap_or(""), w, line_numbers)
         }
+        // Ports (JSON, …) supply their own colored lines; show them verbatim.
+        Block::Prerendered(lines) => lines.clone(),
         Block::ThematicBreak => vec![Line {
             spans: vec![Span::new("─".repeat(w.max(1)), Style::role(Role::Rule))],
             no_wrap: true,

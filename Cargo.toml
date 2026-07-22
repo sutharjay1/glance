@@ -25,6 +25,7 @@ lexopt = "0.3"           # tiny, fast CLI parsing (small-binary priority)
 serde = { version = "1", features = ["derive"] }  # config deserialization
 toml = "0.8"             # ~/.config/glance/config.toml
 regex = "1"              # in-document search
+serde_json = "1"           # JSON viewer port (+32 KB; shares serde infra)
 notify = "6"             # auto-reload file watching (inotify/FSEvents/ReadDirectoryChangesW)
 # Image decode for the image ladder. png+jpeg only (default features pull ~15 formats); +258 KB.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }

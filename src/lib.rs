@@ -9,6 +9,7 @@ pub mod cli;
 pub mod config;
 pub mod export;
 pub mod fuzzy;
+pub mod json;
 pub mod md;
 pub mod open;
 pub mod paint;
@@ -61,6 +62,13 @@ fn read_source(parsed: &cli::Args, stdin_piped: bool) -> Option<String> {
     } else {
         None
     }
+}
+
+/// The terminal's column count, or 80 if it can't be determined (pre-alt-screen probe).
+fn terminal_width() -> usize {
+    crossterm::terminal::size()
+        .map(|(c, _)| c as usize)
+        .unwrap_or(80)
 }
 
 /// Run glance with the given CLI args (excluding `argv[0]`). Returns a process exit code.
@@ -196,6 +204,58 @@ pub fn run(args: &[String]) -> i32 {
             return 1;
         }
     };
+
+    // JSON viewer: a `.json` file renders as syntax-colored, pretty-indented JSON (our own
+    // role-based renderer) rather than as markdown. Invalid JSON falls back to raw text + a note.
+    if path.to_ascii_lowercase().ends_with(".json") && !parsed.timing {
+        let disp_width = width_override
+            .filter(|&w| w > 0)
+            .unwrap_or_else(terminal_width)
+            .max(20);
+        let lines = json::render(&input, disp_width);
+        let blocks = vec![md::parse::Block::Prerendered(lines.clone())];
+        if stdout_tty && !parsed.pipe {
+            let depth = if no_color {
+                ColorDepth::None
+            } else {
+                Capabilities::from_env(false).color
+            };
+            let theme_dark = if theme_explicit {
+                theme_dark
+            } else {
+                term::osc::detect_dark_background().unwrap_or(theme_dark)
+            };
+            let docs = vec![(blocks, Some(std::path::PathBuf::from(path)))];
+            return match view::app::run(
+                docs,
+                theme_dark,
+                depth,
+                true,
+                width_override,
+                line_numbers,
+                None,
+            ) {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("glance: {e}");
+                    1
+                }
+            };
+        }
+        // Pipe mode: paint each line to stdout.
+        let depth = if no_color || !stdout_tty {
+            ColorDepth::None
+        } else {
+            Capabilities::from_env(false).color
+        };
+        let mut buf = String::new();
+        for l in &lines {
+            buf.push_str(&paint::paint(l, &theme, depth, false));
+            buf.push('\n');
+        }
+        print!("{buf}");
+        return 0;
+    }
 
     // `--timing`: measure launch→first-paint (parse + viewport layout) and exit. This is the
     // number the perf gate guards — it must stay well under 80 ms (ADR 0004).

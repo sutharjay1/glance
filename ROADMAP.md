@@ -57,7 +57,8 @@ Streaming stdin + follow (the launch demo), slide mode, HTML export.
 **Exit:** `llm | glance` renders live + auto-follows; slides navigate; `--export html` works.
 
 ## Phase 5 — ports + launch (week 6)  🟨
-- ✅ **math port** (`src/md/math.rs`): inline `$…$` LaTeX → Unicode (Greek, operators/relations, arrows, super/subscripts). Pre-parse pass (`preprocess_math`) transforms math on the raw source **before** pulldown so subscript `_` isn't mis-read as emphasis; code spans/blocks protected; a mathy-content heuristic leaves `$5` currency literal. 12 tests. · ⬜ JSON viewer (`glance data.json`) · ⬜ mermaid box-art
+- ✅ **math port** (`src/md/math.rs`): inline `$…$` LaTeX → Unicode (Greek, operators/relations, arrows, super/subscripts). Pre-parse pass (`preprocess_math`) transforms math on the raw source **before** pulldown so subscript `_` isn't mis-read as emphasis; code spans/blocks protected; a mathy-content heuristic leaves `$5` currency literal. 12 tests.
+- ✅ **JSON viewer** (`src/json.rs`): `glance data.json` → role-colored, 2-space-indented JSON (keys→Heading, strings→Str, numbers→Number, literals→Keyword, punctuation→Dim). Pure `json_to_lines`; invalid JSON falls back to raw + a note. Rendered via a new `Block::Prerendered(Vec<Line>)` passthrough → reuses the whole viewer. `serde_json` +32 KB (shares serde). 6 tests. · ⬜ mermaid box-art
 - ⬜ **Launch** (needs the user — outward-facing): README parity + benchmark tables; vhs GIFs; crates.io + Homebrew + `cargo-dist` binaries; Show HN.
 **Exit:** all reference features present; installable; launch assets published.
 

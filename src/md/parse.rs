@@ -40,6 +40,9 @@ pub enum Block {
         lang: Option<String>,
         code: String,
     },
+    /// Pre-rendered display lines shown verbatim (used by the JSON viewer and other ports that
+    /// build their own colored output instead of markdown blocks).
+    Prerendered(Vec<crate::style::Line>),
     BlockQuote(Vec<Block>),
     Callout {
         kind: CalloutKind,
@@ -117,7 +120,7 @@ fn suffix_block(b: &Block) -> Block {
             inlines: suffix_inlines(inlines),
         },
         Block::Paragraph(v) => Block::Paragraph(suffix_inlines(v)),
-        Block::Code { .. } | Block::ThematicBreak => b.clone(),
+        Block::Code { .. } | Block::ThematicBreak | Block::Prerendered(_) => b.clone(),
         Block::BlockQuote(bs) => Block::BlockQuote(with_url_suffixes(bs)),
         Block::Callout { kind, blocks } => Block::Callout {
             kind: *kind,
@@ -533,7 +536,7 @@ mod tests {
                 Block::List { items, .. } => items
                     .iter()
                     .for_each(|it| it.blocks.iter().for_each(|b| blk(out, b))),
-                Block::ThematicBreak => {}
+                Block::ThematicBreak | Block::Prerendered(_) => {}
             }
         }
         let mut out = String::new();

@@ -5,6 +5,18 @@ Weekly summaries can be generated with the `operations:status-report` skill.
 
 ---
 
+## 2026-07-22 — Phase 5: JSON viewer port · JAY-95
+**Phase:** 5 (🟨) · **Focus:** ports + launch · **Branch:** `feature/jay-91-phase-1-viewer-core`
+
+- **Size check first:** `serde_json` spike → **+32 KB** (shares serde's infra, already a dep) — far under the 0.5 MB flag. Approved, spike reverted, dep kept.
+- New `src/json.rs` — pure `json_to_lines(&Value, width) -> Vec<Line>`: pretty-print with 2-space indent per depth and semantic roles (keys→Heading, string values→Str, numbers→Number, bool/null→Keyword, braces/colons/commas→Dim). Empty containers inline (`{}`/`[]`); long lines truncated to width with `…`. `render(raw, width)` parses and falls back to raw + a `⚠ invalid JSON` note on error. 6 tests (typed roles, depth indent, array commas, empty containers, error fallback, truncation).
+- **Wiring via a new `Block::Prerendered(Vec<Line>)`** passthrough variant (layout returns the lines verbatim) — so the JSON viewer reuses the *entire* pipeline (scroll, search, resize) with zero viewer changes. `lib.rs` feature-detects `.json` (case-insensitive): interactive → a one-block `Prerendered` doc through `app::run`; pipe → paint each line to stdout. Invalid JSON still views (raw + note).
+- **219 total green** (+6), fmt + clippy clean, reinstalled. Binary 4.33 MB.
+
+**Next:** mermaid port (simple `mermaid` fenced flowcharts → box-art; complex → raw fallback). **Then STOP** — remaining Phase 5 is launch (crates.io/Homebrew/cargo-dist/GIFs/Show HN), outward-facing, needs the user.
+
+---
+
 ## 2026-07-22 — Phase 5: math port ($…$ → Unicode) · JAY-95
 **Phase:** 5 (🟨) · **Focus:** ports + launch · **Branch:** `feature/jay-91-phase-1-viewer-core`
 
